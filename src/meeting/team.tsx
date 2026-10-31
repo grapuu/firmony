@@ -8,7 +8,7 @@ import type { AppBindings } from '../app/routes'
 import { userByEmail, type Who } from '../app/store'
 import { newLink, newToken } from '../app/session'
 import { bell, ringStatement } from '../bell'
-import { ORDER, PLANS, TEAM } from '../config'
+import { DOMAIN, ORDER, PLANS, TEAM } from '../config'
 import { startMonths } from '../content/terms'
 import { now, sha256Hex, withinLimit } from '../db'
 import { later, siteOrigin } from '../http'
@@ -34,6 +34,15 @@ type Render = (c: Ctx, title: string, child: Child, status?: ContentfulStatusCod
 
 const ID = /^[A-Za-z0-9-]{1,64}$/
 const EMAIL = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
+/**
+ * Whose address a client's may be: a valid one, never ours (the domain of the service) nor a member's of the team, who
+ * would be signed in to the client's company with it ('email', 'team'; null when it may be the client's).
+ */
+async function clientAddressError(db: D1Database, email: string): Promise<'email' | 'team' | null> {
+  if (!EMAIL.test(email)) return 'email'
+  if (email.endsWith(`@${DOMAIN}`) || (await userByEmail(db, email))?.team) return 'team'
+  return null
+}
 const text = (v: unknown, max: number) => (typeof v === 'string' ? v.trim().slice(0, max) : '')
 const today = () => new Intl.DateTimeFormat('sv-SE', { timeZone: 'Europe/Bratislava' }).format(new Date())
 
@@ -56,7 +65,7 @@ const ERRORS: Record<string, string> = {
   email: 'Napíšte platný e-mail.',
   link: 'Odkaz sa nepodarilo poslať. Skúste to o chvíľu.',
   expired: 'Stretnutie vypršalo. Začnite nové.',
-  team: 'Tento e-mail patrí členovi tímu. Napíšte e-mail klienta.',
+  team: 'Tento e-mail patrí Firmony alebo členovi tímu. Napíšte e-mail klienta.',
 }
 const FLASH: Record<string, string> = {
   overene: 'Totožnosť je overená.',
@@ -107,7 +116,8 @@ export function registerMeetingRoutes(app: Hono<Env>, render: Render): void {
     const ico = normalizeIco(text(body.ico, 12)) ?? ''
     const values = { director: text(body.konatel, 160), email: text(body.email, 200).toLowerCase(), plan: text(body.balik, 10) }
     if (!ico) return start(c, '', values, 'IČO má osem číslic.', 422)
-    if (!EMAIL.test(values.email)) return start(c, ico, values, ERRORS.email ?? '', 422)
+    const wrongAddress = await clientAddressError(db, values.email)
+    if (wrongAddress) return start(c, ico, values, ERRORS[wrongAddress] ?? '', 422)
     const plan = PLANS.find((p) => p.id === values.plan)
     if (!plan) return start(c, ico, values, 'Vyberte balík.', 422)
     if (!(await withinLimit(db, 'meeting-start', user.id, 30, 3600))) return start(c, ico, values, 'Priveľa stretnutí za hodinu. Skúste to neskôr.', 429)
@@ -180,7 +190,8 @@ export function registerMeetingRoutes(app: Hono<Env>, render: Render): void {
     if (!order || order.status !== 'open') return missing(c)
     const body = await c.req.parseBody()
     const email = text(body.email, 200).toLowerCase()
-    if (!EMAIL.test(email)) return c.redirect(back(order, 'chyba=email'), 303)
+    const wrongAddress = await clientAddressError(db, email)
+    if (wrongAddress) return c.redirect(back(order, `chyba=${wrongAddress}`), 303)
     if (!(await withinLimit(db, 'meeting-link', order.id, 6, 3600))) return c.redirect(back(order, 'chyba=link'), 303)
     let token = await keptLink(c, order)
     const ts = now()
@@ -247,9 +258,9 @@ export function registerMeetingRoutes(app: Hono<Env>, render: Render): void {
       || (admission.level === 'high' && !(await bankOriginalsIntact(db, c.env.FILES, view.dossier, view.decision?.bank_id ?? '')))) return c.redirect(back(order, 'chyba=originals'), 303)
     // The address he signs in with, read back to him at the table: corrected here when it was misheard at the start.
     const email = text(body.email, 200).toLowerCase() || order.email
-    if (!EMAIL.test(email)) return c.redirect(back(order, 'chyba=email'), 303)
+    const wrongAddress = await clientAddressError(db, email)
+    if (wrongAddress) return c.redirect(back(order, `chyba=${wrongAddress}`), 303)
     const existing = await userByEmail(db, email)
-    if (existing?.team) return c.redirect(back(order, 'chyba=team'), 303)
     if (email !== order.email) await db.prepare("UPDATE orders SET email = ?1 WHERE id = ?2 AND status = 'open' AND company_id IS NULL").bind(email, order.id).run()
     const key = `onboarding/${order.id}/zmluva-${crypto.randomUUID()}.${photo.ext}`
     await c.env.FILES.put(key, photo.bytes, { httpMetadata: { contentType: photo.type } })

@@ -105,6 +105,37 @@ export function depositDue(company: Pick<Company, 'startOn' | 'endsOn'>, month: 
   return month >= addMonths(company.startOn.slice(0, 7), FORMATION.depositFromMonth - 1)
 }
 
+/**
+ * A deposit left once a contract ended (article 3 of the formation contract: "Čo zo zábezpeky zostane po skončení
+ * zmluvy, vrátime do 14 dní"). The bills after the end take of it first (depositDue); what is left is returned by
+ * europio's bank and marked here (returnDeposit).
+ */
+export interface DepositLeft {
+  id: string
+  name: string
+  cents: number
+  endsOn: string
+  /** The last day to return it: fourteen days after the end. */
+  returnBy: string
+}
+
+export async function depositsLeft(db: D1Database, today: string, demo = false): Promise<DepositLeft[]> {
+  const rows = await db
+    .prepare(`SELECT c.id, c.name, c.prepaid_cents, c.ends_on, date(c.ends_on, '+14 days') AS return_by FROM companies c
+      WHERE c.prepaid_cents > 0 AND c.ends_on IS NOT NULL AND c.ends_on < ?1 AND c.operator = 0${demo ? '' : ' AND c.demo = 0'} ORDER BY c.ends_on`)
+    .bind(today)
+    .all<Row>()
+  return (rows.results ?? []).map((r) => ({ id: String(r.id), name: String(r.name), cents: Number(r.prepaid_cents), endsOn: String(r.ends_on), returnBy: String(r.return_by) }))
+}
+
+/** The deposit marked returned: only the amount the page showed, only after the end; false when it changed meanwhile. */
+export async function returnDeposit(db: D1Database, company: string, cents: number, today: string, user: string): Promise<boolean> {
+  const done = await db.prepare('UPDATE companies SET prepaid_cents = 0 WHERE id = ?1 AND prepaid_cents = ?2 AND ?2 > 0 AND ends_on IS NOT NULL AND ends_on < ?3').bind(company, cents, today).run()
+  if ((done.meta?.changes ?? 0) !== 1) return false
+  await eventStatement(db, { company, user, action: 'deposit.returned', detail: { cents } }).run()
+  return true
+}
+
 /** What of a client's prepayment this bill takes: the bill's total at most. */
 export const creditOf = (bill: Pick<ClientBill, 'prepaidCents' | 'draft'>) => Math.max(0, Math.min(bill.prepaidCents, bill.draft.totalCents))
 

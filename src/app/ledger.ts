@@ -862,12 +862,17 @@ export function buildBooks(input: LedgerInput): Books {
         const account = d.kind === 'receipt' ? TRANSIT : payableOf(d)
         lines.push(lineOf(account, p.bank, share))
         const item = items.get(d.id)
+        const owed = item ? Math.abs(item.total - item.settled) : 0
         if (item) item.settled += account === '311' ? share : -share
         // An invoice in another currency is settled whole by a payment of it all: what is left is the exchange difference.
-        // A payment that leaves more than the slack automatic pairing allows (match.ts) is a part payment: the rest stays
-        // owed on the invoice, never an exchange gain or loss (the books audit of 30 October 2026).
-        const left = item && foreignOf.has(d.id) ? item.total - item.settled : 0
-        if (item && left !== 0 && Math.abs(left) <= Math.abs(item.total) * FX_SLACK) {
+        // A payment further from the invoice's value at the rate of its day (or, without that rate, from what the invoice
+        // stands at) than the slack automatic pairing allows (match.ts) is a part payment: the rest stays owed on the
+        // invoice, never an exchange gain or loss (the books audit of 30 October 2026).
+        const foreign = foreignOf.get(d.id)
+        const left = item && foreign ? item.total - item.settled : 0
+        const dayRate = foreign ? rateFor(rates, foreign.currency, p.bookedOn) : null
+        const worth = foreign && dayRate ? Math.abs(eurOf(foreign.cents, dayRate.rate)) : owed
+        if (item && left !== 0 && Math.abs(Math.abs(share) - worth) <= worth * FX_SLACK) {
           // Each document's difference names it: a payment of several documents of several cost centres (centers.ts).
           if (item.account !== '311') lines.push(left > 0 ? { md: item.account, d: '663', cents: left, docId: d.id } : { md: '563', d: item.account, cents: -left, docId: d.id })
           else lines.push(left > 0 ? { md: '563', d: '311', cents: left, docId: d.id } : { md: '311', d: '663', cents: -left, docId: d.id })

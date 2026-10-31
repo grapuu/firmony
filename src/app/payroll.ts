@@ -170,6 +170,9 @@ export function socialRates(kind: ContractKind, regular: boolean, pension: Pensi
 export const healthInsured = (kind: ContractKind, pension: PensionKind): boolean => !(kind === 'dobps' || ((kind === 'dovp' || kind === 'dopc') && pension !== 'none'))
 
 /** A pensioner is insured by the state as well (§ 11(7) of Act 580/2004), so the minimum advance does not reach the month (VšZP: lowered by the days of the state's insurance). */
+/** A pension that keeps the taxpayer's non-taxable part out of the monthly advances (§ 11(6), FS 260857). */
+export const yearlyOnly = (pension: PensionKind | undefined): boolean => pension === 'old' || pension === 'service'
+
 export const stateInsured = (pension: PensionKind | undefined): boolean => isPension(pension) && pension !== 'none'
 
 /** The share of the partial base the child bonus may reach, by the number of children (§ 33(6)). */
@@ -331,7 +334,9 @@ export function payslip(input: PayInput): Payslip {
 
   const insured = healthInsured(contract, pension)
   const half = input.disabled ? 2 : 1
-  const healthDeduction = insured && input.healthDeduction ? healthDeductible(gross, input.days, monthDays(input.period)) : 0
+  // The deductible item is an employee's in employment, never of an agreement or a director's remuneration (§ 13a of
+  // Act No. 580/2004; podnikajte.sk: "nie dohody o práci vykonávanej mimo pracovného pomeru").
+  const healthDeduction = insured && input.healthDeduction && contract === 'employment' ? healthDeductible(gross, input.days, monthDays(input.period)) : 0
   let healthEmployee = insured ? floorCents(((gross - healthDeduction) * HEALTH.employee) / half / 10000) : 0
   const healthEmployer = insured ? floorCents((gross * HEALTH.employer) / half / 10000) : 0
   // The minimum advance: the employee's and the employer's rate of the subsistence minimum, each rounded down (VšZP:
@@ -346,7 +351,10 @@ export function payslip(input: PayInput): Payslip {
   }
 
   const partialBase = gross + sickPay - socialEmployee - healthEmployee
-  const nonTaxable = input.declaration ? Math.min(Math.max(0, partialBase), nonTaxableMonth(y)) : 0
+  // A pensioner of old age, early old age or a service pension after the age at the start of the year claims the
+  // non-taxable part only for the year, by the pension it is lowered by (§ 11(6); FS 260857: "Podpísať Vyhlásenie môže
+  // iba daňovník, ktorý nie je na začiatku zdaňovacieho obdobia poberateľom dôchodku"). The child bonus stays monthly.
+  const nonTaxable = input.declaration && !yearlyOnly(pension) ? Math.min(Math.max(0, partialBase), nonTaxableMonth(y)) : 0
   const taxBase = Math.max(0, partialBase - nonTaxable)
   const advance = bandTax(taxBase, y)
 

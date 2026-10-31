@@ -21,7 +21,7 @@
 // - The child bonus (§ 33): 100 € a month for a child to the month it turns 15, 50 € to the month it turns 18; each
 //   child's lowered by a tenth of the partial base above 18 times 1,5 times the average wage of two years before (27 432 €
 //   in 2026), a twelfth of it a month; each month at most 29 % (one child) to 64 % (six or more) of a twelfth of the
-//   partial base; the year's bonus is the sum of the months.
+//   partial base; the year's bonus is the sum of the months, each rounded to the cent as its payslip rounds it.
 import { childBonus, nonTaxableYear, payrollYear, BONUS_CAP, type Child, type PayrollYear } from './payroll'
 
 /** What the year holds of an employee at this employer, from the months closed (cents). */
@@ -109,10 +109,10 @@ export function yearBonus(partial: number, y: PayrollYear, children: readonly Ch
     if (each.length === 0) continue
     const whole = each.reduce((s, a) => s + Math.max(0, a - cut), 0)
     const cap = ((BONUS_CAP[Math.min(each.length, 6)] ?? 0) * Math.max(0, partial)) / 12 / 10000
-    out.push({ month: m, amount: Math.min(whole, cap) })
+    // Each month to the cent, as the month's payslip rounds it, so a year whose months were paid right settles to nought.
+    out.push({ month: m, amount: round(Math.min(whole, cap)) })
   }
-  const total = round(out.reduce((s, x) => s + x.amount, 0))
-  return { total, months: out.map((x) => ({ month: x.month, amount: round(x.amount) })) }
+  return { total: out.reduce((s, x) => s + x.amount, 0), months: out }
 }
 
 /** The settlement of a year: here and before, the parts, the tax, the bonus, and what is settled. */

@@ -7,7 +7,7 @@ import { failedMail, teamClients, type ClientRow } from './store'
 import { teamDeadlines } from './deadlines-store'
 import { pressing } from './deadlines'
 import { responseDueAt } from './support'
-import { billRows, billingDrafts, issuable, PLAN_DOC_SQL, planUsages } from './billing-store'
+import { billRows, billingDrafts, depositsLeft, issuable, PLAN_DOC_SQL, planUsages } from './billing-store'
 import type { PlanUsage } from './plan-usage'
 import { monthStart, type Tariff } from './billing'
 
@@ -43,6 +43,7 @@ export type AlarmKey =
   | 'foundings'
   | 'billsOverdue'
   | 'billing'
+  | 'deposits'
   | 'plans'
   | 'oldDocs'
   | 'reading'
@@ -204,12 +205,13 @@ export async function overviewOf(db: D1Database, input: OverviewInput): Promise<
   const firms = `c.operator = 0 AND c.invoicing_only = 0${demo ? '' : ' AND c.demo = 0'}`
   const companies = `(SELECT id FROM companies c WHERE ${firms})`
   const q = (sql: string, ...binds: unknown[]) => db.prepare(sql).bind(...binds)
-  const [rows, { dues }, mail, plans, bills, counts] = await Promise.all([
+  const [rows, { dues }, mail, plans, bills, deposits, counts] = await Promise.all([
     teamClients(db, user, demo),
     teamDeadlines(db, user, demo, today),
     failedMail(db),
     planUsages(db, at, null, demo),
     billRows(db, today, null, 2000).catch(() => []),
+    depositsLeft(db, today, demo).catch(() => []),
     db.batch<Row>([
       // 0: what is new since the window began
       q(`SELECT
@@ -297,6 +299,8 @@ export async function overviewOf(db: D1Database, input: OverviewInput): Promise<
     { key: 'foundings', level: 'pozor', n: input.officer ? num(w.foundings) : 0, firms: [], href: '/ucto/zalozenia' },
     { key: 'billsOverdue', level: longOverdue.length > 0 ? 'hori' : 'pozor', n: overdueBills.length, firms: firmsOf(overdueBills.map((b) => ({ id: b.clientId, name: b.clientName }))), href: '/ucto/fakturacia#vystavene' },
     { key: 'billing', level: 'pozor', n: waitingBills.length, firms: firmsOf(waitingBills.map((b) => b.company)), href: '/ucto/fakturacia' },
+    // A deposit left after the end goes back within fourteen days (the formation contract, article 3).
+    { key: 'deposits', level: deposits.some((d) => d.returnBy < today) ? 'hori' : 'pozor', n: deposits.length, firms: firmsOf(deposits), href: '/ucto/fakturacia#kaucie' },
     planAlarm(plans),
     { key: 'oldDocs', level: 'pozor', n: num(w.oldDocs), firms: whose('old'), href: '/ucto/doklady', since: w.oldDocsSince === null || w.oldDocsSince === undefined ? null : num(w.oldDocsSince) },
     { key: 'reading', level: 'pozor', n: num(w.reading), firms: whose('reading'), href: '/ucto/doklady' },
@@ -337,6 +341,7 @@ export const ALARM_LABELS: Record<AlarmKey, string> = {
   foundings: 'Prihlášky s. r. o. za 1 € čakajú na overenie',
   billsOverdue: 'Faktúry Firmony klientom po splatnosti',
   billing: 'Faktúry klientom za tento mesiac čakajú',
+  deposits: 'Kaucie na vrátenie po skončení zmluvy (do 14 dní)',
   plans: 'Klienti nad svojím balíkom tento mesiac',
   oldDocs: `Doklady nezaúčtované dlhšie ako ${OLD_DOC_DAYS} dní`,
   reading: 'Doklady sa nedajú prečítať dlhšie ako hodinu',

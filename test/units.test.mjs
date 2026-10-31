@@ -3067,6 +3067,47 @@ async function zipped(entries, note) {
     const mayValid = await valid(mayXml, KV_XSD, 'kv53b')
     check('the control statement of May with ONP="x", valid against kv_dph_2025.xsd', mayValid.ok && mayXml.includes('ONP="x"') && mayXml.includes('FO="0"'), mayValid.why)
     check('the books take row 29 off what the return deducts', ledger.vatDeducted({ ...vat.emptyRows(), r19: 5000, r29: 1725 }) === 3275)
+    // The audit of 30 October 2026: an invoice whose correction and payment fall in one period was put into that period
+    // twice, and each event counted twice (four lines of C.2, and row 29 twice whatever was left of it).
+    const sameMonth = unpaid({ paidOn: '2027-05-20' })
+    const sm = vat.vatDocsByPeriod(payer, [sameMonth])
+    const smMay = vat.workOut(payer, '2027-05', sm.get('2027-05') ?? [])
+    check(
+      'correction and payment in one period: the document once in it, row 29 nought, one line of C.2 each way',
+      (sm.get('2027-05') ?? []).filter((d) => d === sameMonth).length === 1 &&
+        smMay.rows.r29 === 0 &&
+        JSON.stringify(smMay.kv.c2.map((l) => l.or)) === JSON.stringify([-2300, 2300]),
+      JSON.stringify([smMay.rows.r29, smMay.kv.c2]),
+    )
+  }
+
+  // A correction of a deduction that was never made (a credit note of a supplier whose invoice was booked without the
+  // deduction) changes nothing in the return: no row 28 and no line of C.2 (the audit of 30 October 2026).
+  {
+    const none = doc({ number: 'DOB-1', vat: v('domestic', [[23, -10000, -2300, 0]], { vatId: 'SK2121212121', corrects: 'FA-1' }) })
+    const some = doc({ number: 'DOB-2', vat: v('domestic', [[23, -10000, -2300, -2300]], { vatId: 'SK2121212121', corrects: 'FA-2' }) })
+    const r = vat.workOut(payer, '2027-01', [none, some])
+    check(
+      'a correction without a deduction: no row 28 and no C.2; one with it: both',
+      r.rows.r28 === 2300 && r.kv.c2.length === 1 && r.kv.c2[0].fp === 'FA-2' && r.kv.c2[0].or === -2300,
+      JSON.stringify([r.rows.r28, r.kv.c2]),
+    )
+  }
+
+  // A document that came on the day a period was filed: before the filing was marked it belongs to that period, after
+  // it to the next open one (filedMap keeps the moment of the mark after "@"); an old mark without it moves it on.
+  {
+    const lateDay = (receivedAt) => doc({ issuedOn: '2027-01-20', receivedOn: '2027-02-20', receivedAt })
+    const data = v('domestic', [[23, 1000, 230, 230]], { suppliedOn: '2027-01-20' })
+    const marked = vatStore.filedMap([{ period: '2027-01', filedOn: '2027-02-20', filedAt: 1_800_000_000 }])
+    check(
+      'a filing of the same day: the document before the mark stays in January, after it goes to February, an old mark moves it',
+      marked.get('2027-01') === '2027-02-20@1800000000' &&
+        vat.periodOfDoc(lateDay(1_799_999_000), data, payer, marked) === '2027-01' &&
+        vat.periodOfDoc(lateDay(1_800_000_500), data, payer, marked) === '2027-02' &&
+        vat.periodOfDoc(lateDay(1_799_999_000), data, payer, new Map([['2027-01', '2027-02-20']])) === '2027-02' &&
+        vat.periodOfDoc(lateDay(undefined), data, payer, marked) === '2027-02',
+    )
   }
 
   // § 25a (18 October 2026, bad-debt.ts): an issued invoice's claim lowered once uncollectible (rows 26 and 27 minus, C.1
@@ -5515,6 +5556,30 @@ async function zipped(entries, note) {
     JSON.stringify(found),
   )
   check('while the year runs the tax is not asked to be booked', !issues({}, { tax: null }).some((x) => x.code === 'tax'))
+  // The books audit of 30 October 2026: books that begin during the year hold the year whole only when their opening
+  // balances carry its costs and revenues so far; a car sold asks for its price (§ 19(3)(b)).
+  const midOpening = (lines) => [{ ...entry('2026-07-01', ...lines), kind: 'opening' }]
+  check(
+    'books from July: warned while the opening holds no costs or revenues, not once it does, not for books from 1 January; a car sold warned',
+    issues({ start: '2026-07-01', entries: midOpening([['221.001', '701', 500000]]) }).some((x) => x.code === 'midyear' && x.level === 'warn') &&
+      !issues({ start: '2026-07-01', entries: midOpening([['221.001', '701', 500000], ['518', '701', 120000], ['701', '602', 600000]]) }).some((x) => x.code === 'midyear') &&
+      !issues().some((x) => x.code === 'midyear') &&
+      issues({}, { carsSold: 2 }).find((x) => x.code === 'carSale')?.count === 2 &&
+      !issues({}, { carsSold: 0 }).some((x) => x.code === 'carSale'),
+  )
+  // § 17(34) (FS 586463): the base below the depreciation from 48 000 € of the company's dear cars is raised by what
+  // their depreciation exceeds it (row 302); a base at or above it is not.
+  const cars = { excess: E(3000), limit: E(12000) }
+  const low = closing.taxOf(input({ result: E(5000), taxable: E(50000), cars }))
+  const high = closing.taxOf(input({ result: E(12000), taxable: E(50000), cars }))
+  check(
+    'a car of 60 000 €: the base of 5 000 € raised by 3 000 € in row 302; a base of 12 000 € stays',
+    low.rows.r301 === E(5000) && low.rows.r302 === E(3000) && low.rows.r310 === E(8000) && high.rows.r302 === 0 && high.rows.r310 === E(12000),
+    JSON.stringify([low.rows.r301, low.rows.r302, low.rows.r310, high.rows.r302]),
+  )
+  const xml302 = closingXml.dppoXml(filer, low, { year: 2026, from: '2026-01-01', to: '2026-12-31', declaredOn: '2027-03-20', kind: 'R', micro: false, minimumHalf: false, minimumExempt: false, tableF: { r01: 0, r02: 0, r03: 0 } })
+  v = await valid(xml302, xsd('dppo2025.xsd'), 'dppo-302')
+  check('row 302 in the return, valid', v.ok && xml302.includes('<r302>3000.00</r302>'), v.why)
   t = closing.taxOf(input({ result: E(30000), taxable: E(92000) }))
   const ch = closing.changedSinceFiled({ rows: { ...t.rows, r100: E(29000), r1050: E(2900) }, balance: { ...st.balanceEur }, profit: { ...st.profitEur } }, t, st)
   check(
@@ -6068,6 +6133,26 @@ async function zipped(entries, note) {
   s = slip({ contract: 'dopc', regular: true, pension: 'invalid', exemption: true, gross: 30000 })
   check('a disability pensioner on an agreement keeps disability insurance; no sickness and no health insurance (VšZP: any pension of old age, disability or service)', s.healthInsured === false && s.healthEmployee === 0 && s.socialEmployee === 400 + 300 && s.social.employee.sickness === undefined, JSON.stringify(s.social))
   check('a pensioner pays no minimum health advance: the state insures him too', slip({ gross: 20000, contract: 'employment', pension: 'old' }).healthTopUp === 0 && slip({ gross: 20000, contract: 'employment' }).healthTopUp > 0)
+  // The payroll audit of 30 October 2026 (§ 11(6), FS 260857): an old-age, early old-age or service pensioner claims the
+  // taxpayer's non-taxable part only for the year; the monthly advance takes none, the child bonus stays.
+  {
+    const kid = [{ name: 'A', born: '2016-01-01' }]
+    const worker = slip({ contract: 'employment', declaration: true, children: kid })
+    const old = slip({ contract: 'employment', pension: 'old', declaration: true, children: kid })
+    const service = slip({ contract: 'employment', pension: 'service', declaration: true })
+    const invalid = slip({ contract: 'employment', pension: 'invalid', declaration: true })
+    check(
+      'the monthly non-taxable part 497,23 € in 2026: an employee has it, an old-age and a service pensioner not (the bonus stays), a disability pensioner has it',
+      worker.nonTaxable === 49723 && old.nonTaxable === 0 && old.bonus === worker.bonus && old.bonus > 0 && service.nonTaxable === 0 && invalid.nonTaxable === 49723 && old.advance > worker.advance,
+      JSON.stringify([worker.nonTaxable, old.nonTaxable, service.nonTaxable, invalid.nonTaxable, old.bonus]),
+    )
+    check(
+      'the health deductible item is of employment alone: an agreement and a director\'s remuneration pay health insurance from the whole income',
+      slip({ gross: 40000, contract: 'employment', healthDeduction: true }).healthDeduction > 0 &&
+        slip({ gross: 40000, contract: 'dovp', regular: true, healthDeduction: true }).healthDeduction === 0 &&
+        slip({ gross: 40000, contract: 'director', healthDeduction: true }).healthDeduction === 0,
+    )
+  }
   {
     const three = slip({ gross: 60000, declaration: true, children: [{ name: 'A', born: '2016-01-01' }, { name: 'B', born: '2018-01-01' }, { name: 'C', born: '2020-01-01' }] })
     check('each child\'s bonus makes the whole bonus to the cent', three.bonusByChild.reduce((sum, c) => sum + c.amount, 0) === three.bonus && three.bonus > 0, JSON.stringify({ bonus: three.bonus, by: three.bonusByChild }))
@@ -6079,7 +6164,7 @@ async function zipped(entries, note) {
   )
   check('the minimum health advance counts only the days the state does not pay for', slip({ gross: 5000, minimumDays: 15 }).healthTopUp === 2199 - 800 && slip({ gross: 5000 }).healthTopUp === 4545 - 800)
 
-  check('the most a daily base may be: twice the general assessment base of two years before, a day of 365, four decimals down', payMonth.dailyBaseCap(2026) === 1002082 && payMonth.dailyBaseCap(2027) === 1065205)
+  check('the most a daily base may be: twice the general assessment base of two years before, a day of 365, four decimals up (100,2083 € in 2026, 106,5206 € in 2027)', payMonth.dailyBaseCap(2026) === 1002083 && payMonth.dailyBaseCap(2027) === 1065206)
   const leave = (from, to, dvz, id = 'l1') => ({ id, employeeId: 'e1', from, to, dvz })
   let m = payMonth.sickMonth('2026-10', [leave('2026-10-05', '2026-10-20', 500000)], '2026-01-01', null)
   check(
@@ -6092,11 +6177,22 @@ async function zipped(entries, note) {
   m = payMonth.sickMonth('2026-10', [leave('2026-10-01', '2026-10-01', 333333)], '2026-01-01', null)
   check('the sum is rounded up to the cent', m.amount === 834)
   m = payMonth.sickMonth('2026-10', [leave('2026-10-01', '2026-10-01', 2000000)], '2026-01-01', null)
-  check('a daily base above the most is capped', m.parts[0].dvz === 1002082)
+  check('a daily base above the most is capped', m.parts[0].dvz === 1002083)
   m = payMonth.sickMonth('2026-10', [leave('2026-10-10', null, null)], '2026-01-01', null)
   check('a leave that lasts runs to the month\'s end; without a daily base it waits', m.days === 22 && m.missing.join() === 'l1' && m.amount === 0)
   m = payMonth.sickMonth('2026-10', [leave('2026-10-10', null, 500000)], '2026-01-01', '2026-10-15')
   check('only the days of the employment count', m.days === 6)
+  // The payroll audit of 30 October 2026: a leave that began in 2025 is the employer's for ten days, at most at the cap of
+  // 2025 (twice 1 430 €, a day of 365: 94,0274 €); it threw before (payroll knew no 2025).
+  m = payMonth.sickMonth('2026-01', [leave('2025-12-31', '2026-01-15', 1200000)], '2025-01-01', null)
+  check(
+    'a leave from 31 December 2025: its January days 2 to 10 the employer\'s (2 at 25 %, 7 at 55 %), from 10 January the Agency\'s, at the cap of 2025',
+    payMonth.dailyBaseCap(2025) === 940274 && payMonth.dailyBaseCap(2024) === 855082 && payMonth.dailyBaseCap(2019) === null &&
+      m.parts[0].days25 === 2 && m.parts[0].days55 === 7 && m.benefitDays === 6 && m.parts[0].dvz === 940274 && m.amount === Math.ceil((940274 * (25 * 2 + 55 * 7)) / 10000),
+    JSON.stringify(m),
+  )
+  m = payMonth.sickMonth('2026-01', [leave('2026-01-01', '2026-01-20', 500000)], '2025-01-01', null)
+  check('a leave from 1 January 2026: fourteen days the employer\'s', m.parts[0].days25 === 3 && m.parts[0].days55 === 11 && m.benefitDays === 6)
 
   const closed = (period, sicknessBase, fields = {}) => ({ period, sicknessBase, earned: sicknessBase, worked: 16800, sickDays: 0, ...fields })
   const jan_may = ['2026-01', '2026-02', '2026-03', '2026-04', '2026-05'].map((p) => closed(p, 150000))
@@ -6210,6 +6306,14 @@ async function zipped(entries, note) {
   check(
     "the year's bonus: each month 100 € at most 29 % of a twelfth of the base, lowered by a tenth of the base above 27 432 €",
     taxSettlement.yearBonus(2000000, y, child, all).total === 120000 && taxSettlement.yearBonus(300000, y, child, all).total === 87000 && taxSettlement.yearBonus(3000000, y, child, all).total === 94320 && taxSettlement.yearBonus(4000000, y, child, all).total === 0 && taxSettlement.yearBonus(2000000, y, child, [3, 4]).total === 20000,
+  )
+  // The payroll audit of 30 October 2026: a month's bonus is rounded to the cent, as its payslip pays it, and the year is
+  // their sum (a base of 300,01 € a month: 29 % of it is 87,0029 €, 87,00 € a month and 1 044 € a year, not 1 044,03 €).
+  const odd = taxSettlement.yearBonus(30001 * 12, y, child, all)
+  check(
+    "the year's bonus is the sum of its months to the cent: the months shown make the total",
+    odd.total === 104400 && odd.months.every((x) => x.amount === 8700),
+    JSON.stringify(odd),
   )
   const here = { taxable: 1800000, insurance: 259200, advance: 179388, bonus: 120000, months: all.map((m) => `2026-${String(m).padStart(2, '0')}`) }
   let r = taxSettlement.settle(2026, here, child, { ...taxSettlement.EMPTY_SETTLEMENT, requested: true })
@@ -6487,6 +6591,49 @@ async function zipped(entries, note) {
     Boolean(assets.assetErrors({ ...base, costCents: 150_000, inUseOn: '2026-01-01', taxGroup: 1 }).cost) &&
       Boolean(assets.assetErrors({ ...base, account: '013', taxGroup: null, costCents: 500_000, inUseOn: '2026-01-01' }).months) &&
       Boolean(assets.assetErrors({ ...base, costCents: 500_000, inUseOn: '2026-01-01', taxGroup: 1, taxMethod: 'accelerated' }).method),
+  )
+  // The books audit of 30 October 2026. An asset taken over whose books follow the tax goes on from what the tax
+  // depreciated: other oprávky are refused, unless the books have their own months.
+  const opening = { ...base, source: 'opening', costCents: 1_000_000, inUseOn: '2025-01-01', taxGroup: 1, priorTaxYears: 1, priorTaxCents: 250_000 }
+  check(
+    'taken over with oprávky other than the tax depreciation: refused while the books follow the tax, fine with months of their own or the same figures',
+    Boolean(assets.assetErrors({ ...opening, priorBookCents: 300_000 }).prior) &&
+      !assets.assetErrors({ ...opening, priorBookCents: 250_000 }).prior &&
+      !assets.assetErrors({ ...opening, priorBookCents: 300_000, bookMonths: 48 }).prior,
+  )
+  // A car of 30 000 € sold in July of its second year: the share of its six full months (§ 22(12)) in Table B row 5, and
+  // the books' residual value over the tax one (what the share took) back in row 180, so the two cancel.
+  const soldCar2 = { ...base, car: true, costCents: 3_000_000, inUseOn: '2026-01-15', taxGroup: 1, disposedOn: '2027-07-10', disposal: 'sale' }
+  const y27 = assets.assetYear([soldCar2], 2027)
+  const p27 = closing.proposeTax({ profit: {}, accounts: {}, balance: {} }, y27)
+  check(
+    'a car sold: share 3 750 € in row 5, the books 3 750 € over the tax in row 180, said to the closing; the same asset not a car: nothing',
+    y27.saleShares === 375_000 && y27.residualUp === 375_000 && y27.residualDown === 0 && y27.carsSold === 1 && p27.tableB.b05 === 375_000 && p27.r180 === 375_000 && p27.r290 === undefined &&
+      assets.assetYear([{ ...soldCar2, car: false }], 2027).residualUp === 0,
+    JSON.stringify([y27, p27]),
+  )
+  // A machine of 10 000 € whose books depreciate over 36 months, sold in January of its third year: the tax residual
+  // (5 000 €, two of four years) over the books' (3 333,28 €) is taken off the base in row 290.
+  const fastBooks = { ...base, costCents: 1_000_000, inUseOn: '2026-01-01', taxGroup: 1, bookMonths: 36, disposedOn: '2028-01-15', disposal: 'sale' }
+  const y28 = assets.assetYear([fastBooks], 2028)
+  check(
+    'books faster than the tax: the tax residual over the books in row 290, a gift in neither',
+    y28.residualDown === y28.disposedTax - y28.disposedBook && y28.residualDown > 0 && y28.residualUp === 0 && closing.proposeTax({ profit: {}, accounts: {}, balance: {} }, y28).r290 === y28.residualDown &&
+      assets.assetYear([{ ...fastBooks, disposal: 'gift' }], 2028).residualDown === 0,
+    JSON.stringify(y28),
+  )
+  const ti27 = closing.taxInputOf(2027, { ...p27, result: 0, revenues: 0, costs: 0, taxable: 0 }, closing.EMPTY_INPUTS, { advances: 0 })
+  const tax27 = closing.taxOf(ti27)
+  check(
+    'the register\'s rows reach the return: row 180 and the share in row 250 cancel; what the accountant types wins',
+    ti27.typed.r180 === 375_000 && tax27.rows.r180 === 375_000 && tax27.rows.r250 === 375_000 && tax27.rows.r301 === 0 &&
+      closing.taxInputOf(2027, { ...p27, result: 0, revenues: 0, costs: 0, taxable: 0 }, { ...closing.EMPTY_INPUTS, typed: { r180: 100 } }, { advances: 0 }).typed.r180 === 100,
+    JSON.stringify([ti27.typed, tax27.rows.r180, tax27.rows.r250, tax27.rows.r301]),
+  )
+  check(
+    'a typed row as the books propose it, and a car limit beside its excess',
+    closing.proposedTyped({ r210: 5, r180: 7 }, 'r180') === 7 && closing.proposedTyped({ r210: 5 }, 'r290') === 0 && closing.proposedTyped({ r210: 5 }, 'r210') === 5 &&
+      assets.assetYear([{ ...base, costCents: 6_000_000, inUseOn: '2026-01-01', taxGroup: 1, car: true }], 2027).carLimit === 1_200_000,
   )
   // Depreciation by cost centre (18 October 2026, centers.ts): each month's depreciation of a centre's assets, and the
   // residual value written off at a disposal, count in that centre; the books' lines stay as they are.
@@ -6984,6 +7131,32 @@ await (await import('./social.units.mjs')).checkSocial()
   )
   const noRates = ledger.buildBooks({ company: co, docs: [doc('usd-in', { totalCents: 100000, currency: 'USD', fxRate: '1.25' })], payments: [], banks: [], filed: [], manual: opening })
   check('the rate the accountant confirmed counts without any kept: 1 000 USD at 1,25 is 800 €', noRates.entries.find((e) => e.key === 'd:usd-in')?.lines[0]?.cents === 80000)
+  // The books audit of 30 October 2026: a payment of part of an invoice in another currency leaves the rest owed (it was
+  // booked as an exchange gain); a payment of all of it after the rate moved far is still settled whole.
+  const fxBooks = (amountCents, bookedOn) =>
+    ledger.buildBooks({
+      company: co,
+      rates: fx.ratesOf([
+        { currency: 'USD', day: '2026-03-09', rate: '1.08' },
+        { currency: 'USD', day: '2026-05-29', rate: '1.10' },
+        { currency: 'USD', day: '2026-09-30', rate: '1.25' },
+      ]),
+      docs: [doc('usd-part', { totalCents: 100000, currency: 'USD', paymentId: 'pp' })],
+      payments: [pay('pp', bookedOn, -amountCents)],
+      banks: [{ id: 'b1', iban: 'SK3112000000198742637541', ledger: '221.001', balanceCents: null, balanceOn: null }],
+      filed: [],
+      manual: opening,
+    })
+  const part = fxBooks(45455, '2026-06-01')
+  const whole = fxBooks(80000, '2026-10-01')
+  const partLines = (part.entries.find((e) => e.key === 'p:pp')?.lines ?? []).map((l) => `${l.md}/${l.d}:${l.cents}`).join(' ')
+  const wholeLines = (whole.entries.find((e) => e.key === 'p:pp')?.lines ?? []).map((l) => `${l.md}/${l.d}:${l.cents}`).join(' ')
+  const partItem = part.items.find((i) => i.docId === 'usd-part')
+  check(
+    '1 000 USD (925,93 €) half paid with 454,55 €: no exchange difference, 471,38 € left owed; paid with 800 € at 1,25 a dollar: settled, 125,93 € a gain',
+    partLines === '321/221.001:45455' && partItem && Math.abs(partItem.total - partItem.settled) === 47138 && wholeLines === '321/221.001:80000 321/663:12593',
+    `${partLines} | ${wholeLines} | ${JSON.stringify(partItem)}`,
+  )
   // § 53b in the books: the deduction leaves 343.100 for 378 on the 101st day, and comes back with the payment.
   {
     const payerCo = { id: 'c1', name: 'Firma', vatStatus: 'payer', vatQuarterly: false, vatSince: null, startOn: '2026-01-01', createdAt: 0, endsOn: null, taxOffice: null, icdph: 'SK2120000000', address: 'x' }

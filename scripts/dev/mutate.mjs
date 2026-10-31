@@ -3,6 +3,7 @@
 //
 //   node scripts/dev/mutate.mjs              every rule of the list
 //   node scripts/dev/mutate.mjs number QR    only the rules whose description has one of these words
+//   UNITS_ONLY=1 node scripts/dev/mutate.mjs  only the unit suite, never the runtime one
 //
 // The list is the last change's; replace it for the next one. Each rule is a file, the text that holds it, and
 // what it becomes without it. The copy is in the scratch folder of the system (never the repository itself), so
@@ -13,23 +14,25 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
 const RULES = [
-  // Stage 7 of closing the loop (17 October 2026): what the check of the whole circle found.
-  ['src/team/registrations.ts', "      add({ key: `${e.id}:in:social`, agency: 'social', move: 'in', name: e.name, insurer: null, day: addDays(e.startedOn, -1) })", "      add({ key: `${e.id}:in:social`, agency: 'social', move: 'in', name: e.name, insurer: null, day: e.startedOn })", 'an employee is registered the day before the start'],
-  ['src/team/registrations.ts', '    if (isWorkingDay(d)) left--', '    left--', 'the insurer is told within eight working days'],
-  ['src/team/registrations.ts', '  const ours = (day: string) => day >= from && (!until || day <= until)', '  const ours = (day: string) => !until || day <= until', 'what was before the contract is the former accountant\'s'],
-  ['src/team/routes.tsx', '  if (!due || due.done !== back) return', '  if (!due) return', 'a registration recorded twice is one record'],
-  ['src/team/deadlines.ts', "    add({ kind: 'registration', period: null, day: r.day, state: r.done ? 'done' : 'open', registration: r })", "    add({ kind: 'registration', period: null, day: r.day, state: 'open', registration: r })", 'a recorded registration is done'],
-  ['src/team/store.ts', "  return `(CASE WHEN EXISTS (SELECT 1 FROM events ev WHERE ev.company_id = ${company}.id AND ev.action = '${POA_RESIGNED}')", "  return `(CASE WHEN 1", 'files alone do not finish the handover'],
-  ['src/app/papers.ts', "AND kind = 'poa' AND deleted_at IS NULL AND checked_at IS NULL\").bind(ts, user, nonce, id, company)", "AND kind = 'poa' AND deleted_at IS NULL\").bind(ts, user, nonce, id, company)", 'a checked power of attorney is never returned'],
-  ['src/team/routes.tsx', '  if (reason.length < 5) return', '  if (reason.length < 0) return', 'a power of attorney is returned with a reason'],
-  ['src/team/deadlines.ts', "    if (filed.advances.kind === 'quarterly' && Number(month.slice(5, 7)) % 3 !== 0) continue\n", '', 'quarterly advances fall at the end of a quarter'],
-  ['src/team/deadlines.ts', '    const day = workingDayFrom(periodRange(month).to)', '    const day = periodRange(month).to', 'an advance due on a weekend moves to the working day'],
-  ['src/team/deadlines.ts', '  const from = nextMonth(closingDue(filed.year, filed.extendedTo).slice(0, 7))', '  const from = closingDue(filed.year, filed.extendedTo).slice(0, 7)', 'advances start the month after the filing deadline'],
-  ['src/order.ts', "         AND NOT EXISTS (SELECT 1 FROM companies c WHERE c.ico = orders.ico AND c.closed_at IS NULL AND c.demo = 0 AND c.operator = 0)`", '`', 'no order is renewed for a client'],
-  ['src/order.ts', "      `UPDATE orders SET expires_at = ?2 + ?3, token = ?4 WHERE", "      `UPDATE orders SET expires_at = ?2 + ?3 WHERE ?4 = ?4 AND", 'a renewed order has a new token'],
-  ['src/app/fio.ts', " : read.status === 'failed' && read.why !== '409 soon' ? { status: 'down' }", '', 'Fio not answering is said as that'],
-  ['src/views/team.tsx', '              {m.keys === 0 ? <span class="pill pill--amber">{t.people.noKey}</span> : null}\n', '', 'a member without a passkey is marked'],
-  ['src/team/deadlines.ts', "      if (closed && day >= today) add({ kind: 'payrollPay', period: month, day, state: 'open' })", "      if (closed) add({ kind: 'payrollPay', period: month, day, state: 'open' })", 'wages to pay are listed until their payday'],
+  // The audits of 30 October 2026: VAT, the books and the closing.
+  ['src/app/vat.ts', "    for (const e of unpaidEvents(doc, counted.data, company, filed)) if (e.period !== own && !out.get(e.period)?.includes(doc)) put(e.period, doc)", "    for (const e of unpaidEvents(doc, counted.data, company, filed)) if (e.period !== own) put(e.period, doc)", '§ 53b: a document once in a period'],
+  ['src/app/vat.ts', '          if (deduct === 0) continue\n', '', 'a correction of no deduction corrects nothing'],
+  ['src/app/vat.ts', '    if (filedOn === doc.receivedOn && at && doc.receivedAt !== undefined && doc.receivedAt <= Number(at)) break\n', '', 'a document of the filing day before the mark'],
+  ['src/app/takeover.ts', '    if ((cls === 5 || cls === 6) && !midYear) {', '    if (cls === 5 || cls === 6) {', 'mid-year: costs and revenues stay'],
+  ['src/app/takeover.ts', '    if ((cls > 6 || (cls > 4 && !midYear)) || balance === 0) continue', '    if (cls > 4 || balance === 0) continue', 'mid-year: costs and revenues are opening lines'],
+  ['src/app/closing.ts', "    if (!soFar) out.push({ code: 'midyear', level: 'warn', count: 1 })", '', 'books from the middle of the year warned'],
+  ['src/app/closing.ts', "  if ((args.carsSold ?? 0) > 0) out.push({ code: 'carSale', level: 'warn', count: args.carsSold ?? 0 })", '', 'a car sold warned'],
+  ['src/app/closing.ts', '  if (input.cars && input.cars.excess > 0 && r.r301 < input.cars.limit) r.r302 = roundCents(input.cars.excess)\n', '', 'row 302 for dear cars'],
+  ['src/app/closing.ts', '  if (input.cars && input.cars.excess > 0 && r.r301 < input.cars.limit) r.r302', '  if (input.cars && input.cars.excess > 0) r.r302', 'row 302 only below the limit'],
+  ['src/app/closing.ts', '      ...(assets.residualUp > 0 ? { r180: assets.residualUp } : {}),\n', '', 'row 180 proposed from the register'],
+  ['src/app/closing.ts', "    typed: { r210: proposal.r210, ...(proposal.r180 ? { r180: proposal.r180 } : {}), ...(proposal.r290 ? { r290: proposal.r290 } : {}), ...inputs.typed },", '    typed: { r210: proposal.r210, ...inputs.typed },', 'the proposed rows 180 and 290 reach the return'],
+  ['src/app/assets.ts', '        out.residualUp += Math.max(0, book - taxResidual)\n', '', 'the books residual over the tax one'],
+  ['src/app/assets.ts', '        out.residualDown += Math.max(0, taxResidual - book)\n', '', 'the tax residual over the books one'],
+  ['src/app/assets.ts', "      if (taxResidual !== null && a.disposal !== 'gift') {", '      if (taxResidual !== null) {', 'a gift adjusts no residual'],
+  ['src/app/assets.ts', "      if (a.car && a.disposal === 'sale') out.carsSold++", '', 'cars sold counted'],
+  ['src/app/assets.ts', "  else if (a.source === 'opening' && kind === 'tangible' && a.bookMonths === null && a.priorBookCents !== a.priorTaxCents)", "  else if (false)", 'an opening asset with other oprávky refused'],
+  ['src/app/ledger.ts', '        if (item && left !== 0 && Math.abs(Math.abs(share) - worth) <= worth * FX_SLACK) {', '        if (item && left !== 0) {', 'a part payment in another currency stays owed'],
+  ['src/app/ledger.ts', '        const worth = foreign && dayRate ? Math.abs(eurOf(foreign.cents, dayRate.rate)) : owed', '        const worth = owed', 'a whole payment after a large move of the rate'],
 ]
 
 const root = new URL('../..', import.meta.url).pathname
@@ -55,7 +58,7 @@ for (const [file, from, to, what] of chosen) {
   }
   writeFileSync(path, original.replace(from, to))
   const units = process.env.RUNTIME_ONLY ? { ok: true, out: '' } : run('npm test')
-  const runtime = units.ok ? run('npm run test:runtime') : { ok: false, out: '' }
+  const runtime = units.ok && !process.env.UNITS_ONLY ? run('npm run test:runtime') : { ok: !process.env.UNITS_ONLY ? false : units.ok, out: '' }
   writeFileSync(path, original)
   const fails = `${units.out}\n${runtime.out}`
     .split('\n')

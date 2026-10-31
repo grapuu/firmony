@@ -126,7 +126,7 @@ export function trialBalance(rows: readonly string[][], start: string): TrialBal
       result -= balance
       continue
     }
-    if (cls > 4 || balance === 0) continue
+    if ((cls > 6 || (cls > 4 && !midYear)) || balance === 0) continue
     out.lines.push({ account, md: balance > 0 ? balance : 0, d: balance < 0 ? -balance : 0 })
   }
   if (result !== 0) {

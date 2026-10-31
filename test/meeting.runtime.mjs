@@ -9,7 +9,7 @@ const JPEG = new Uint8Array([0xff, 0xd8, 0xff, 0xe0, ...new TextEncoder().encode
 const PNG = new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, ...new TextEncoder().encode('TEST-ONLY identity card, back, synthetic')])
 const CONTRACT = new Uint8Array([0xff, 0xd8, 0xff, 0xe0, ...new TextEncoder().encode('TEST-ONLY photo of a signed paper contract, synthetic')])
 
-const plain = (html) => html.replace(/ /g, ' ').replace(/&nbsp;/g, ' ')
+const plain = (html) => html.replace(/[\u00a0\u202f]/g, ' ').replace(/&nbsp;/g, ' ')
 const cookieOf = (res, name) => (res.headers.get('set-cookie') ?? '').split(/,(?=\s*[\w-]+=)/).map((c) => c.trim().split(';')[0]).find((c) => c.startsWith(`${name}=`)) ?? ''
 
 /** The declaration as the director's phone sends it: the director alone owns the company, nothing abroad, no cash. */
@@ -30,6 +30,8 @@ export async function checkMeetingRuntime({ db, files, get, as, freshAdminCookie
   check('meeting: the company and who acts for it come from the register', res.status === 200 && page.includes('TEST-ONLY Vlastná s. r. o.') && page.includes('value="Ing. Ján Vlastník"') && page.includes('Začať stretnutie') && page.includes('/ucto/zmluva-na-papier'))
   res = await officer.post('/ucto/stretnutie', { ico: '56633333', konatel: 'Niekto Iný', email: 'vlastnik@meeting.test', balik: 'start' })
   check('meeting: only a director the register names', res.status === 422)
+  res = await officer.post('/ucto/stretnutie', { ico: '56633333', konatel: 'Ing. Ján Vlastník', email: 'lucia@firmony.test', balik: 'start' })
+  check('meeting: started with an address of the team, refused', res.status === 422 && plain(await res.text()).includes('patrí Firmony alebo členovi tímu'))
   res = await officer.post('/ucto/stretnutie', { ico: '56633333', konatel: 'Ing. Ján Vlastník', email: 'Vlastnik@Meeting.test', balik: 'start' })
   const desk = res.headers.get('location') ?? ''
   const id = /^\/ucto\/stretnutie\/([0-9a-f-]{36})$/.exec(desk)?.[1] ?? ''
@@ -85,7 +87,7 @@ export async function checkMeetingRuntime({ db, files, get, as, freshAdminCookie
 
   // ----------------------------------------------------------------------------------------------- the checks and the approval
   page = plain(await (await deskAs.get(desk)).text())
-  check('meeting: the prepared checks are shown, nothing left to judge', page.includes('Zapísať kontroly a schváliť') && (page.match(/meet__check--(?:ready|recorded)/g) ?? []).length === 5 && !page.includes('Dokončiť v spise'), page.slice(page.indexOf('Kontroly a schválenie'), page.indexOf('Kontroly a schválenie') + 1500))
+  check('meeting: the prepared checks are shown, nothing left to judge', page.includes('Zapísať kontroly a schváliť') && (page.match(/meet__check--(?:ready|recorded)/g) ?? []).length === 5 && !page.includes('Dokončiť v spise'), JSON.stringify((page.match(/meet__check meet__check--\w+[\s\S]*?meet__sub">[^<]*/g) ?? []).map((m) => m.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' '))))
   res = await deskAs.post(`${desk}/schvalit`, { hash: dossier.facts_hash })
   check('meeting: PEP is his own word', res.headers.get('location') === `${desk}?chyba=pep`)
   res = await deskAs.post(`${desk}/schvalit`, { hash: dossier.facts_hash, pep: '1' })
@@ -104,7 +106,9 @@ export async function checkMeetingRuntime({ db, files, get, as, freshAdminCookie
   res = await deskAs.form(`${desk}/zmluva`, contract([]))
   check('meeting: both have to have signed', res.headers.get('location') === `${desk}?chyba=signed`)
   res = await deskAs.form(`${desk}/zmluva`, contract([['podpisana', '1']]).map(([k, v]) => (k === 'email' ? [k, 'ahoj@firmony.io'] : [k, v])))
-  check('meeting: an address of the team is never the client\'s', res.headers.get('location') === `${desk}?chyba=team` && (await db.prepare('SELECT status FROM orders WHERE id = ?').bind(id).first()).status === 'open')
+  const ours = res.headers.get('location')
+  res = await deskAs.form(`${desk}/zmluva`, contract([['podpisana', '1']]).map(([k, v]) => (k === 'email' ? [k, 'lucia@firmony.test'] : [k, v])))
+  check('meeting: an address of the service or of the team is never the client\'s', ours === `${desk}?chyba=team` && res.headers.get('location') === `${desk}?chyba=team` && (await db.prepare('SELECT status FROM orders WHERE id = ?').bind(id).first()).status === 'open', `${ours} ${res.headers.get('location')}`)
   const before = (await sent()).length
   res = await deskAs.form(`${desk}/zmluva`, contract([['podpisana', '1']]).map(([k, v]) => (k === 'email' ? [k, 'Jan.Vlastnik@Meeting.test'] : [k, v])))
   await settle()

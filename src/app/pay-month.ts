@@ -14,7 +14,8 @@
 //   gets the surcharges for night, weekend and public holiday work (§ 223(2)), no holiday and no overtime; a director's
 //   remuneration none of them.
 // - Sick pay (Act No. 462/2003 Z. z. as of 1 January 2026, on slov-lex): § 7(2) calendar days from the first day to the
-//   fourteenth, § 8(1) 25 % of the daily assessment base for days 1 to 3 and 55 % for days 4 to 14, § 8(4) the decisive
+//   fourteenth (the tenth for an incapacity that began in 2025, by the rules then: employerSickDays), § 8(1) 25 % of
+//   the daily assessment base for days 1 to 3 and 55 % for days 4 to 14, § 8(4) the decisive
 //   period (with fewer than 90 days of insurance: from its start to the day before the incapacity, else that of the Act
 //   on Social Insurance, § 54: the calendar year before, or from the start of the insurance to the end of that year or of
 //   the month before), § 8(5) the base is the sickness insurance bases of the period divided by its days, § 8(7) at most
@@ -170,12 +171,27 @@ export function monthCalendar(period: string, startedOn: string, endedOn: string
 // Sick pay
 // ---------------------------------------------------------------------------------------------------------------
 
-/** The most a daily base may be in the year the incapacity began: the day's share of twice the general assessment base of two years before, in ten-thousandths. */
-export function dailyBaseCap(year: number): number {
-  const y = payrollYear(year)
+/**
+ * The general assessment base (a month of it, in cents) of two years before, for an incapacity that began before the
+ * years payroll.ts knows: 2023 1 430 € and 2022 1 304 € (the Agency's notices; the caps 94,0274 € and 85,5082 € a day).
+ */
+const EARLIER_BASES: Readonly<Record<number, number>> = { 2024: 130400, 2025: 143000 }
+
+/** The most a daily base may be in the year the incapacity began: the day's share of twice the general assessment base of two years before, in ten-thousandths rounded up (null for a year nothing is known of; podnikajte.sk's tables of the maximum benefits of 2025 and 2027). */
+export function dailyBaseCap(year: number): number | null {
+  const base = Object.hasOwn(EARLIER_BASES, year) ? EARLIER_BASES[year]! : year >= 2026 ? payrollYear(year).averageWage : null
+  if (base === null) return null
   const days = (year % 4 === 0 && year % 100 !== 0) || year % 400 === 0 ? 366 : 365
-  return Math.floor((2 * y.averageWage * 12 * 100) / days)
+  // Up to four decimals, as the published caps are: 94,0274 € for 2025 (94,027397...), 100,2083 € for 2026 (100,208219...).
+  return Math.ceil((2 * base * 12 * 100) / days)
 }
+
+/**
+ * The days of an incapacity the employer pays (§ 7(2) of Act No. 462/2003): fourteen since 1 January 2026, ten for one
+ * that began before it, by the rules then in force to its end (pravnenoviny.sk, 21 October 2025: "Ak ePN vznikne ešte v
+ * roku 2025, platia pôvodné pravidlá"; a leave from 31 December 2025 is the employer's to 9 January 2026).
+ */
+export const employerSickDays = (from: string): number => (from < '2026-01-01' ? 10 : 14)
 
 export interface SickPayPart {
   leaveId: string
@@ -218,12 +234,13 @@ export function sickMonth(period: string, leaves: readonly SickLeave[], startedO
       if (isWorkingDay(d)) out.workdays++
       const index = daysBetween(leave.from, d) + 1
       if (index <= 3) days25++
-      else if (index <= 14) days55++
+      else if (index <= employerSickDays(leave.from)) days55++
       else out.benefitDays++
     })
     if (days25 + days55 === 0) continue
     const typed = dvzOf(leave)
-    const dvz = typed === null ? null : Math.min(typed, dailyBaseCap(Number(leave.from.slice(0, 4))))
+    const cap = dailyBaseCap(Number(leave.from.slice(0, 4)))
+    const dvz = typed === null || cap === null ? null : Math.min(typed, cap)
     const amount = dvz === null ? 0 : Math.ceil((dvz * (25 * days25 + 55 * days55)) / 10000)
     if (dvz === null) out.missing.push(leave.id)
     out.parts.push({ leaveId: leave.id, from: range.from, to: range.to, days25, days55, dvz, amount })
@@ -275,7 +292,9 @@ export function proposeDvz(leave: Pick<SickLeave, 'from'>, startedOn: string, cl
   }
   const days = daysBetween(from, to) + 1 - excluded
   if (days <= 0 || sum <= 0) return { dvz: null, reason: 'none' }
-  return { dvz: Math.min(Math.floor((sum * 100) / days), dailyBaseCap(year)), from, to, days, sum }
+  const cap = dailyBaseCap(year)
+  if (cap === null) return { dvz: null, reason: 'none' }
+  return { dvz: Math.min(Math.floor((sum * 100) / days), cap), from, to, days, sum }
 }
 
 const nextPeriod = (p: string) => (p.slice(5) === '12' ? `${Number(p.slice(0, 4)) + 1}-01` : `${p.slice(0, 4)}-${String(Number(p.slice(5)) + 1).padStart(2, '0')}`)

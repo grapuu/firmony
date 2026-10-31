@@ -286,7 +286,7 @@ check('the sales page explains its nonbinding first step and links terms and pri
 {
   const response = await get('/e-faktura-2027'), html = (await response.text()).replace(/[\u00a0\u202f]/g, ' ')
   check('e-invoice guide: receipt duties and five-day reporting are not applied to every non-VAT recipient', response.status === 200 && html.includes('pri ktorom má dodávateľ povinnosť vyhotoviť e-faktúru') && html.includes('nevzťahuje automaticky na každého neplatiteľa') && html.includes('Nie sú automatickou pokutou každému príjemcovi'))
-  check('e-invoice guide: original law, current modification and pending postman integration are visible without an invented supplier price', html.includes('2026-10-22') && html.includes('https://static.slov-lex.sk/static/SK/ZZ/2004/222/20270101.html') && html.includes('Napojenie na digitálneho poštára pripravujeme') && !html.includes('5 až 12 €'))
+  check('e-invoice guide: original law, current modification and pending postman integration are visible without an invented supplier price', html.includes('2026-10-30') && html.includes('https://static.slov-lex.sk/static/SK/ZZ/2004/222/20270101.html') && html.includes('Napojenie na digitálneho poštára zapíname pred 1. januárom 2027') && !html.includes('5 až 12 €'))
 }
 
 // The comparison

@@ -84,7 +84,7 @@ export const GUIDES: Guide[] = [
       {
         h: 'Ako to rieši Firmony',
         p: [
-          'Faktúry, ktoré vystavíte vo Firmony, už dnes vznikajú ako e-faktúry v európskej norme a podľa pravidiel siete Peppol. Každý druh overujeme proti oficiálnym pravidlám. Prijaté e-faktúry vieme prečítať bez prepisovania, zaúčtujeme ich a spárujeme s platbou. Napojenie na digitálneho poštára pripravujeme a pred spustením služby Vám presne povieme, ako ho budete mať.',
+          'Faktúry, ktoré vystavíte vo Firmony, už dnes vznikajú ako e-faktúry v európskej norme a podľa pravidiel siete Peppol. Každý druh overujeme proti oficiálnym pravidlám. Prijaté e-faktúry vieme prečítať bez prepisovania, zaúčtujeme ich a spárujeme s platbou. Napojenie na digitálneho poštára zapíname pred 1. januárom 2027 a vopred Vám presne povieme, ako ho budete mať.',
         ],
       },
     ],
@@ -111,7 +111,7 @@ export const GUIDES: Guide[] = [
       { title: 'Finančná správa: oficiálna dokumentácia eFaktúry a Peppol', url: 'https://www.financnasprava.sk/sk/podnikatelia/dane/dan-z-pridanej-hodnoty/e-faktura' },
     ],
     published: '2026-10-20',
-    modified: '2026-10-22',
+    modified: '2026-10-30',
     keywords: ['e-faktúra 2027', 'povinná elektronická fakturácia', 'digitálny poštár', 'e-faktúra neplatiteľ DPH', 'Peppol'],
   },
   {
@@ -157,14 +157,14 @@ export const GUIDES: Guide[] = [
       },
     ],
     faq: [
-      { q: 'Čo sa počíta ako doklad?', a: 'Doklady, ktoré v mesiaci pribudnú v aplikácii: prijaté faktúry, bločky aj faktúry, ktoré v nej vystavíte. Nerátame ten istý doklad poslaný dvakrát, vymazaný doklad ani naše faktúry Vám.' },
+      { q: 'Čo sa počíta ako doklad?', a: 'Doklady, ktoré v mesiaci pribudnú v aplikácii: prijaté faktúry, bločky a ďalšie doklady, ktoré pošlete. Nerátame faktúry, ktoré v nej vystavíte, ten istý doklad poslaný dvakrát, vymazaný doklad ani naše faktúry Vám.' },
       { q: 'Je v cene aj priznanie k DPH?', a: `Áno. V balíkoch ${rast.name} a ${firma.name} je mesačné priznanie k DPH, kontrolný a súhrnný výkaz. V balíku ${start.name} priznania pri registrácii podľa § 7a.` },
       { q: 'Čo ak budem mať v niektorom mesiaci viac dokladov?', a: `Ten mesiac vyúčtujeme ako vyšší balík. Pri viac ako ${firma.docs} dokladoch mesačne Vám pripravíme ponuku na mieru.` },
       { q: 'Platím za otázky účtovníčke?', a: `Nie. Otázky sú v cene a odpovieme ${REPLY_WITHIN}.` },
     ],
     sources: [],
     published: '2026-10-20',
-    modified: '2026-10-20',
+    modified: '2026-10-30',
     keywords: ['cena účtovníctva', 'koľko stojí účtovník', 'cenník účtovníctva s.r.o.', 'účtovníctvo cena za doklad', 'vedenie účtovníctva cena'],
   },
   {
