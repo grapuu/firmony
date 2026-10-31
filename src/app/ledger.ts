@@ -203,6 +203,8 @@ export interface LedgerLine {
   what?: 'cost' | 'vat' | 'revenue' | 'payable' | 'receivable'
   /** The document a line of an entry of several documents belongs to (a payment's exchange difference), when not the entry's own. */
   docId?: string
+  /** The payment whose unallocated rest this line books, on the account the books proposed (311/321) or the accountant gave. */
+  proposalId?: string
 }
 
 export type EntryKind = 'opening' | 'document' | 'payment' | 'cash' | 'vat' | 'payroll' | 'asset' | 'stock' | 'internal' | 'fx'
@@ -237,6 +239,8 @@ export interface LedgerPayment {
   exemptNote: string | null
   /** The account the accountant gave it. */
   contra: string | null
+  /** The account the accountant gave its unallocated rest (a proposal of the books when NULL). */
+  proposalAccount: string | null
   /** Its bank account: the id, and the analytic account in the books (221.001). */
   bankId: string
   bank: string
@@ -356,6 +360,8 @@ export interface Books {
   issues: BookIssues
   /** What of each payment is not in the books yet (the bank's way: out minus), for the bank's balance against the books. */
   unposted: Map<string, number>
+  /** The unallocated rest of each payment (its amount less its documents' shares), the books' proposal books it. */
+  proposals: Map<string, number>
   /** The payments booked by their documents (an invoice paid, a receipt paid by card), not by an account of their own. */
   documented: Set<string>
   /** The day each document belongs to, booked or not (its entry's, else the day it was issued); null when it has none yet. */
@@ -594,11 +600,17 @@ export function reasonAccount(p: Pick<LedgerPayment, 'amountCents' | 'vs' | 'not
   }
 }
 
-/** The payments of a year the books take without a document: those with a reason, an account of the accountant's, or waiting for one. */
+/** The payments of a year the books take without a document: those with a reason, an account of the accountant's, or
+ *  waiting for one; a payment whose documents did not take its whole amount stays listed, at its rest. */
 export function paymentsWithoutDocuments(books: Books, year: number): LedgerPayment[] {
   const waiting = new Set(books.issues.classify)
   return [...books.payments.values()]
-    .filter((p) => p.bookedOn.startsWith(`${year}-`) && !books.documented.has(p.id) && (p.exempt !== null || p.contra !== null || waiting.has(p.id)))
+    .filter(
+      (p) =>
+        p.bookedOn.startsWith(`${year}-`) &&
+        (!books.documented.has(p.id) || books.proposals.has(p.id)) &&
+        (p.exempt !== null || p.contra !== null || waiting.has(p.id) || books.proposals.has(p.id)),
+    )
     .sort((a, b) => a.bookedOn.localeCompare(b.bookedOn) || a.id.localeCompare(b.id))
 }
 
@@ -671,6 +683,7 @@ export function buildBooks(input: LedgerInput): Books {
   const issues: BookIssues = { unbooked: [], noEntry: [], classify: [], waiting: [], missing: [], foreign: [], unrated: [], beforeStart: { docs: 0, payments: 0 } }
   const items = new Map<string, OpenItem>()
   const unposted = new Map<string, number>()
+  const proposals = new Map<string, number>()
   const documented = new Set<string>()
   const docDays = new Map<string, string | null>()
   const payments = new Map(input.payments.map((p) => [p.id, p]))
@@ -714,6 +727,16 @@ export function buildBooks(input: LedgerInput): Books {
     const p = payments.get(paymentId)
     const euros = eurosOf.get(paymentId)
     if (!p || euros === null || euros === undefined) continue
+    // The pair's own allocation (links.amount_cents, step 94): what of the payment goes to each document. Where any
+    // pair of the payment has none (made before step 94), the payment keeps the old books' attribution: the
+    // documents' expected amounts in the pairing order, the last one takes the rest.
+    const parts = linked.map((d) => d.paidParts?.find((x) => x.id === paymentId)?.cents ?? null)
+    if (parts.every((x): x is number => x !== null)) {
+      // The allocations are kept unsigned; the shares carry the payment's own direction (money in or out).
+      const sign = euros < 0 ? -1 : 1
+      linked.forEach((d, i) => shareOf.set(`${paymentId}:${d.id}`, (parts[i] ?? 0) * sign))
+      continue
+    }
     // Documents in another currency last: what the payment differs from their euros by is their exchange difference.
     const accounting = linked
       .filter((d) => isAccountingDoc(d.kind))
@@ -895,6 +918,20 @@ export function buildBooks(input: LedgerInput): Books {
         }
       }
       if (accounting.some((d) => !booked.has(d.id))) issues.waiting.push(p.id)
+      // The unallocated rest of the payment must not disappear: once every accounting document of the payment is
+      // booked, the books propose the partner's own open item for it (311 for money in, 321 for money out), the
+      // accountant may change the account (payments.proposal_account). The bank is then fully explained; what still
+      // asks for a document or an account is the rest, listed at its rest. While a document is not booked yet, the
+      // payment waits and stays out of the books, as before.
+      const allBooked = accounting.every((d) => booked.has(d.id))
+      const rest = amount - posted
+      if (rest !== 0 && allBooked) {
+        const account = p.proposalAccount ?? (rest > 0 ? '311' : '321')
+        lines.push({ ...lineOf(account, p.bank, rest), proposalId: p.id, what: rest > 0 ? 'receivable' : 'payable' })
+        proposals.set(p.id, rest)
+        issues.classify.push(p.id)
+      }
+      if (rest !== 0 && !allBooked) unposted.set(p.id, p.currency === 'EUR' ? rest : p.amountCents)
       if (lines.length > 0) {
         const first = accounting.find((d) => booked.has(d.id))
         const who = p.party ? readableName(p.party) : first?.party ? readableName(first.party) : ''
@@ -911,7 +948,6 @@ export function buildBooks(input: LedgerInput): Books {
           lines,
         })
       }
-      if (amount - posted !== 0) unposted.set(p.id, p.currency === 'EUR' ? amount - posted : p.amountCents)
       continue
     }
     const contra = paymentContra(p, input.payroll ?? [])
@@ -1211,7 +1247,7 @@ export function buildBooks(input: LedgerInput): Books {
 
   entries.sort((a, b) => a.on.localeCompare(b.on) || ORDER[a.kind] - ORDER[b.kind] || a.number.localeCompare(b.number) || a.key.localeCompare(b.key))
   const openItems = [...items.values()].sort((a, b) => (a.dueOn ?? a.on).localeCompare(b.dueOn ?? b.on) || a.docId.localeCompare(b.docId))
-  return { start, entries, items: openItems, issues, unposted, documented, docDays, payments, banks: input.banks, payroll: input.payroll ?? [] }
+  return { start, entries, items: openItems, issues, unposted, proposals, documented, docDays, payments, banks: input.banks, payroll: input.payroll ?? [] }
 }
 
 // ---------------------------------------------------------------------------------------------------------------

@@ -469,7 +469,8 @@ export async function billRows(db: D1Database, today: string, client: string | n
   const rows = await db
     .prepare(
       `SELECT b.invoice_id, b.client_id, b.delivered_at, i.number, i.vs, i.customer_name, i.issued_on, i.due_on, i.total_cents, i.token, i.reminded_at, i.status, i.kind,
-         (SELECT p.booked_on FROM links l JOIN payments p ON p.id = l.payment_id WHERE l.document_id = i.document_id ORDER BY p.booked_on LIMIT 1) AS paid_on,
+         CASE WHEN COALESCE(i.total_cents, 0) - COALESCE((SELECT SUM(COALESCE(l.amount_cents, ABS(p.amount_cents))) FROM links l JOIN payments p ON p.id = l.payment_id WHERE l.document_id = i.document_id AND p.currency = 'EUR'), 0) <= 0
+           THEN (SELECT MAX(p.booked_on) FROM links l JOIN payments p ON p.id = l.payment_id WHERE l.document_id = i.document_id) ELSE NULL END AS paid_on,
          (SELECT COALESCE(SUM(ABS(cn.total_cents)), 0) FROM invoices cn WHERE cn.company_id = i.company_id AND cn.corrects = i.id AND cn.kind = 'credit' AND cn.status = 'issued') AS credited
          FROM billing_invoices b JOIN invoices i ON i.id = b.invoice_id
         WHERE (?1 IS NULL OR b.client_id = ?1) ORDER BY i.issued_on DESC, i.seq DESC LIMIT ?2`,

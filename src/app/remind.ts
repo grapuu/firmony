@@ -8,7 +8,7 @@ import { bell, ringStatement } from '../bell'
 import { monthName } from './copy'
 import type { AppBindings } from './routes'
 import { statementDue } from './statements'
-import { CASH_PAID, MISSING, membersOf } from './store'
+import { CASH_PAID, MISSING, REMAINING_SQL, membersOf } from './store'
 import { waitingFor } from './approvals'
 import { PAYABLE_DOC } from './payorders'
 import { isWorkingDay } from './vat'
@@ -150,8 +150,7 @@ export async function remindApprovals(env: AppBindings, ms: number, origin: stri
   const db = env.DB
   const waiting = `d.company_id = c.id AND d.kind = 'invoice_in' AND d.deleted_at IS NULL AND d.duplicate_of IS NULL AND d.approved_at IS NULL
     AND (d.status = 'read' OR d.booked_at IS NOT NULL) AND d.paid_privately = 0
-    AND COALESCE(d.due_cents, d.total_cents) > COALESCE((SELECT SUM(ABS(p.amount_cents)) FROM links l JOIN payments p ON p.id = l.payment_id
-        WHERE l.document_id = d.id AND p.currency = 'EUR' AND (SELECT COUNT(*) FROM links k WHERE k.payment_id = p.id) = 1), 0)
+    AND ${REMAINING_SQL} > 0
     AND NOT ${CASH_PAID} AND ${PAYABLE_DOC}`
   const companies = await db
     .prepare(

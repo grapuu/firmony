@@ -1448,7 +1448,9 @@ check(
   invoices.stateOf({ status: 'draft', paidOn: null, dueOn: '2026-10-01' }, '2026-10-13') === 'draft' &&
     invoices.stateOf({ status: 'issued', paidOn: '2026-10-12', dueOn: '2026-10-01' }, '2026-10-13') === 'paid' &&
     invoices.stateOf({ status: 'issued', paidOn: null, dueOn: '2026-10-12' }, '2026-10-13') === 'overdue' &&
-    invoices.stateOf({ status: 'issued', paidOn: null, dueOn: '2026-10-13' }, '2026-10-13') === 'unpaid',
+    invoices.stateOf({ status: 'issued', paidOn: null, dueOn: '2026-10-13' }, '2026-10-13') === 'unpaid' &&
+    invoices.stateOf({ status: 'issued', paidOn: null, dueOn: '2026-10-12', kind: 'invoice', totalCents: 10000, leftCents: 6000 }, '2026-10-13') === 'partial' &&
+    invoices.stateOf({ status: 'issued', paidOn: null, dueOn: '2026-10-12', kind: 'invoice', totalCents: 10000, leftCents: 0 }, '2026-10-13') === 'paid',
 )
 
 // The e-invoice is read back as the invoice it is, by us and by the customer

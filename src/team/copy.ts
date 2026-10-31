@@ -2393,6 +2393,8 @@ export const team = typesetAll({
     save: 'Uložiť',
     accountError: 'Účet zapíšte tromi číslicami, prípadne s analytikou: 538 alebo 538.001. Bankový účet 221 tu byť nemôže.',
     paymentsEmpty: 'V tomto roku nie sú žiadne platby bez dokladu.',
+    restLead: 'Z dokladov je k tejto platbe priradená len časť sumy. Zvyšok knižujeme na otvorenú položku druhej strany: 311 pri peniazoch dovnútra, 321 pri peniazoch von. Účet môžete zmeniť.',
+    rest: 'Zostáva priradiť',
     internalTitle: 'Interné doklady',
     internalLead: 'Zápisy, ku ktorým iný doklad nie je: časové rozlíšenie, výber hotovosti, rozdelenie zisku, oprava. Každý dostane číslo svojho roka a zostane mu, aj keď ho odstránite.',
     newInternal: 'Nový interný doklad',

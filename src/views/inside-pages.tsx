@@ -951,6 +951,7 @@ export const PaymentPage: FC<PaymentPageProps> = ({ p, docs, suggestions, loose,
                 </div>
               ))}
               {differs ? <p class="flag">{app.payment.differs(formatEur(docsTotal), formatEur(Math.abs(p.amountCents)))}</p> : null}
+              {p.remainderCents > 0 ? <p class="flag">{app.payment.restLead(signed(p.remainderCents))}</p> : null}
               <UploadForm p={p} label={app.payment.uploadMore} line closed={closed} />
             </section>
           ) : (
@@ -988,6 +989,12 @@ export const PaymentPage: FC<PaymentPageProps> = ({ p, docs, suggestions, loose,
                 <dt>{app.payment.amount}</dt>
                 <dd>{signed(p.amountCents)}</dd>
               </div>
+              {p.remainderCents > 0 && p.docs > 0 ? (
+                <div>
+                  <dt>{app.payment.rest}</dt>
+                  <dd>{signed(p.remainderCents)}</dd>
+                </div>
+              ) : null}
               {p.party ? (
                 <div>
                   <dt>{app.payment.party}</dt>

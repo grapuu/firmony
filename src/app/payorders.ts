@@ -23,6 +23,7 @@
 import { now } from '../db'
 import { isIban, plainIban } from './invoices'
 import { normalizeVs } from './match'
+import { REMAINING_SQL } from './store'
 
 type Row = Record<string, unknown>
 const str = (v: unknown) => (typeof v === 'string' ? v : null)
@@ -64,8 +65,7 @@ export async function payables(db: D1Database, company: string, approvals = fals
        FROM documents d
        WHERE d.company_id = ? AND d.kind = 'invoice_in' AND d.deleted_at IS NULL AND d.paid_privately = 0 AND d.duplicate_of IS NULL
          AND (d.status = 'read' OR d.booked_at IS NOT NULL) AND ${PAYABLE_DOC}
-         AND COALESCE(d.due_cents, d.total_cents) > COALESCE((SELECT SUM(ABS(p.amount_cents)) FROM links l JOIN payments p ON p.id = l.payment_id
-             WHERE l.document_id = d.id AND p.currency = 'EUR' AND (SELECT COUNT(*) FROM links k WHERE k.payment_id = p.id) = 1), 0)
+         AND ${REMAINING_SQL} > 0
          AND NOT EXISTS (SELECT 1 FROM ledger_entries ce WHERE ce.document_id = d.id AND ce.kind = 'cash' AND ce.deleted_at IS NULL)
        ORDER BY COALESCE(d.due_on, d.issued_on, '9999-12-31'), d.created_at
        LIMIT 1000`,

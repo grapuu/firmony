@@ -429,6 +429,8 @@ export interface StoredInvoice {
   baseCents: number
   vatCents: number
   totalCents: number
+  /** What instalments left of the total (null when unknown or nothing linked): the invoice's state and its due. */
+  leftCents: number | null
   token: string
   documentId: string | null
   iban: string | null
@@ -639,11 +641,20 @@ const str = (v: unknown) => (typeof v === 'string' ? v : null)
 // Money on a request's symbol: in euros (a request is in euros), the symbol as the bank wrote it, noughts in front too.
 export const ON_REQUEST_SQL = "p.company_id = i.company_id AND i.vs IS NOT NULL AND ltrim(p.vs, '0') = ltrim(i.vs, '0') AND p.amount_cents > 0 AND COALESCE(p.currency, 'EUR') = 'EUR'"
 const ON_REQUEST = ON_REQUEST_SQL
+/** What instalments left of an invoice in its own currency, over the alias i: its total less its links' allocations,
+ *  converted at its booked rate when it is foreign (links.amount_cents is the one source of truth). */
+const LEFT_OF_INVOICE = `COALESCE(i.total_cents, 0) - CASE
+  WHEN COALESCE(i.currency, 'EUR') = 'EUR' THEN COALESCE((SELECT SUM(COALESCE(l.amount_cents, ABS(p.amount_cents)))
+    FROM links l JOIN payments p ON p.id = l.payment_id WHERE l.document_id = i.document_id AND p.currency = 'EUR'), 0)
+  ELSE ROUND(COALESCE((SELECT SUM(COALESCE(l.amount_cents, ABS(p.amount_cents)))
+    FROM links l JOIN payments p ON p.id = l.payment_id WHERE l.document_id = i.document_id AND p.currency = 'EUR'), 0) * CAST(REPLACE(COALESCE(i.fx_rate, '1'), ',', '.') AS REAL)) END`
 const INVOICE_COLUMNS = `i.*, u.name AS created_by_name,
   CASE WHEN i.kind = 'proforma'
     THEN COALESCE(i.hand_paid_on, (SELECT p.booked_on FROM payments p WHERE ${ON_REQUEST} ORDER BY p.booked_on LIMIT 1))
-    ELSE COALESCE(i.hand_paid_on, (SELECT MAX(p.booked_on) FROM links l JOIN payments p ON p.id = l.payment_id WHERE l.document_id = i.document_id),
+    ELSE COALESCE(i.hand_paid_on,
+      CASE WHEN ${LEFT_OF_INVOICE} <= 0 THEN (SELECT MAX(p.booked_on) FROM links l JOIN payments p ON p.id = l.payment_id WHERE l.document_id = i.document_id) ELSE NULL END,
       (SELECT ce.on_date FROM ledger_entries ce WHERE ce.document_id = i.document_id AND ce.kind = 'cash' AND ce.deleted_at IS NULL LIMIT 1)) END AS paid_on,
+  ${LEFT_OF_INVOICE} AS left_cents,
   CASE WHEN i.kind = 'proforma' THEN CASE WHEN i.hand_paid_on IS NOT NULL THEN i.total_cents ELSE (SELECT COALESCE(SUM(p.amount_cents), 0) FROM payments p WHERE ${ON_REQUEST}) END ELSE 0 END AS paid_cents,
   (SELECT o.number FROM invoices o WHERE o.id = i.relates AND o.company_id = i.company_id) AS relates_number,
   (SELECT dc.center_id FROM documents dc WHERE dc.id = i.document_id AND dc.company_id = i.company_id) AS doc_center_id,
@@ -677,6 +688,7 @@ function invoiceOf(row: Row): StoredInvoice {
     createdByName: str(row.created_by_name),
     createdBy: str(row.created_by),
     paidOn: str(row.paid_on),
+    leftCents: typeof row.left_cents === 'number' ? row.left_cents : null,
     handPaidOn: str(row.hand_paid_on),
     kind: row.kind === 'credit' || row.kind === 'proforma' || row.kind === 'advance' ? row.kind : 'invoice',
     vs: str(row.vs),
@@ -703,9 +715,9 @@ function invoiceOf(row: Row): StoredInvoice {
 }
 
 export type InvoiceKind = 'invoice' | 'credit' | 'proforma' | 'advance'
-export type InvoiceState = 'draft' | 'unpaid' | 'overdue' | 'paid' | 'credit'
+export type InvoiceState = 'draft' | 'unpaid' | 'partial' | 'overdue' | 'paid' | 'credit'
 
-export function stateOf(invoice: Pick<StoredInvoice, 'status' | 'paidOn' | 'dueOn'> & { kind?: StoredInvoice['kind']; totalCents?: number }, today: string): InvoiceState {
+export function stateOf(invoice: Pick<StoredInvoice, 'status' | 'paidOn' | 'dueOn'> & { kind?: StoredInvoice['kind']; totalCents?: number; leftCents?: number | null }, today: string): InvoiceState {
   if (invoice.status === 'draft') return 'draft'
   // A credit note lowers what the invoice asks; it is not collected, so it is neither paid nor overdue. The tax
   // document of an advance documents money received, and a final invoice its advances paid whole asks for nothing.
@@ -713,6 +725,10 @@ export function stateOf(invoice: Pick<StoredInvoice, 'status' | 'paidOn' | 'dueO
   if (invoice.kind === 'advance') return 'paid'
   if (invoice.kind === 'invoice' && invoice.totalCents === 0) return 'paid'
   if (invoice.paidOn) return 'paid'
+  // An instalment paid part of it (31 October 2026): neither unpaid nor paid, the remainder is what it still asks;
+  // nothing left of it is paid, whatever day the last pair has.
+  if (invoice.leftCents !== undefined && invoice.leftCents !== null && invoice.leftCents <= 0) return 'paid'
+  if (invoice.leftCents !== undefined && invoice.leftCents !== null && invoice.leftCents < (invoice.totalCents ?? 0)) return 'partial'
   return invoice.dueOn < today ? 'overdue' : 'unpaid'
 }
 

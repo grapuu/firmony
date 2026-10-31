@@ -1,7 +1,7 @@
 // Business trips kept (18 October 2026, trips.ts): a trip and the document it makes, written in one batch, numbered in
 // the company's year (CP2026-001), removed by a mark while its document is neither booked nor paired.
 import { now } from '../db'
-import { eventStatement } from './store'
+import { REMAINING_SQL, eventStatement } from './store'
 import type { Meals, TripCar, TripResult, Transport } from './trips'
 
 type Row = Record<string, unknown>
@@ -43,7 +43,7 @@ const parse = <T>(text: unknown, fallback: T): T => {
 }
 
 const COLUMNS = `t.*, u.name AS created_by_name, d.booked_at,
-  COALESCE((SELECT p.booked_on FROM links l JOIN payments p ON p.id = l.payment_id WHERE l.document_id = t.document_id ORDER BY p.booked_on LIMIT 1),
+  COALESCE(CASE WHEN ${REMAINING_SQL} <= 0 THEN (SELECT MAX(p.booked_on) FROM links l JOIN payments p ON p.id = l.payment_id WHERE l.document_id = t.document_id) ELSE NULL END,
     (SELECT ce.on_date FROM ledger_entries ce WHERE ce.document_id = t.document_id AND ce.kind = 'cash' AND ce.deleted_at IS NULL LIMIT 1)) AS paid_on`
 const FROM = 'trips t LEFT JOIN users u ON u.id = t.created_by LEFT JOIN documents d ON d.id = t.document_id'
 

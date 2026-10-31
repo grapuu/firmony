@@ -1682,6 +1682,13 @@ export const MIGRATIONS: readonly string[][] = [
     holdDeleteGuard('links'),
     ...documentsUpdateGuardWith(['fx_rate', 'vat_country', 'vat_hint', 'vat_reverse', 'advance_cents', 'takings_cash', 'vat_ratio', 'ratio_mode']),
   ],
+  // 94 (31 October 2026): what each pair allocated of its payment to its document, in the payment's own currency;
+  // NULL for pairs made before this step (their payment whole, when it pays the document alone). One source of truth
+  // for what a document was paid, in its own currency and in euros.
+  ['ALTER TABLE links ADD COLUMN amount_cents INTEGER'],
+  // 95 (31 October 2026): the account the accountant gave the unallocated rest of a payment; NULL keeps the books'
+  // own proposal, 311 for money in, 321 for money out.
+  ['ALTER TABLE payments ADD COLUMN proposal_account TEXT'],
 ]
 
 /** The next bank account's analytic account of a company (221.001, 221.002 ...), as SQL over ?1, the company. */

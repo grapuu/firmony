@@ -78,7 +78,7 @@ import {
   trialCsv,
   type Books,
 } from '../app/ledger'
-import { booksOf, contraStatement, internalStatement, manualEntries, openingStatements, removeInternalStatement } from '../app/ledger-store'
+import { booksOf, contraStatement, internalStatement, manualEntries, openingStatements, proposalStatement, removeInternalStatement } from '../app/ledger-store'
 import { changeLockStatement, lockHistory, periodLock } from '../app/period-store'
 import { lockBlockers, lockTarget, type LockValues } from '../app/periods'
 import { PeriodPage, type PeriodPageProps } from '../views/periods'
@@ -4043,6 +4043,29 @@ teamRoutes.post('/klienti/:id/kniha/platby/:payment', async (c) => {
   const db = c.env.DB
   await db.batch([contraStatement(db, b.company.id, id, account), eventStatement(db, { company: b.company.id, user: c.get('who').user.id, action: 'ledger.contra', subject: id, detail: { account } })])
   return c.redirect(`${bookPath(b.company, 'payments')}?rok=${b.year}&ok=kniha-ucet#platba-${id}`, 303)
+})
+
+/** The account the accountant gives the unallocated rest of a payment; empty puts the books' proposal (311/321) back. */
+teamRoutes.post('/klienti/:id/kniha/platby/:payment/navrh', async (c) => {
+  const b = await booksPage(c)
+  const id = c.req.param('payment')
+  const payment = b && ID.test(id) ? b.books.payments.get(id) : undefined
+  if (!b || !payment || !b.books.proposals.has(id)) return missingPage(c)
+  const body = await c.req.parseBody()
+  const typed = typeof body.ucet === 'string' ? body.ucet.trim().slice(0, 12) : ''
+  const account = typed === '' ? null : canonicalAccount(typed)
+  if (typed !== '' && (!account || synthetic(account) === '221')) {
+    return shell(
+      c,
+      'clients',
+      `${t.ledger.paymentsTitle}: ${b.company.name}`,
+      <PaymentsPage company={b.company} books={b.books} payments={paymentsWithoutDocuments(b.books, b.year)} years={b.years} year={b.year} error={{ payment: id, value: typed }} />,
+      422,
+    )
+  }
+  const db = c.env.DB
+  await db.batch([proposalStatement(db, b.company.id, id, account), eventStatement(db, { company: b.company.id, user: c.get('who').user.id, action: 'ledger.proposal', subject: id, detail: { account } })])
+  return c.redirect(`${bookPath(b.company, 'payments')}?rok=${b.year}&ok=navrh#platba-${id}`, 303)
 })
 
 const INTERNAL_ROWS = 6
