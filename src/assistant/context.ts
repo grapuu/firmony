@@ -12,6 +12,7 @@ import { MONEY_DAYS, moneyWindow, payoutVerdict, type MoneyFacts } from '../app/
 import { readMoney } from '../calc'
 import { addDays } from '../app/ending'
 import { moneyOutgoings, unpaidIssued, unpaidReceived } from '../app/money-store'
+import { receivedUnpaid } from '../peppol/store'
 import { assistantAllowed, type AssistantScope } from './store'
 import { ASSISTANT_TOPICS, type AssistantAnswer, type AssistantTopic } from './model'
 
@@ -26,6 +27,82 @@ export async function assistantDocuments(db:D1Database,s:AssistantScope,selected
     documents.unshift({id:d.id,label:d.number??d.fileName??'Vybraný doklad'})
   }
   return await assistantAllowed(db,s)?documents:[]
+}
+
+/** A question that asks to do a chore — a new invoice, a reminder, e-invoices, an upload — is answered with the exact
+ *  page that does it, prepared from the company's data: Mony points, the app's own form performs, nothing is sent or
+ *  written by the assistant itself. True when the question was one of these. */
+export async function actionAnswer(
+  db: D1Database,
+  company: Company,
+  team: boolean,
+  root: string,
+  question: string,
+  answer: AssistantAnswer,
+  source: (title: string, detail: string, href: string) => void,
+): Promise<boolean> {
+  const here = (path: string) => (team ? `${root}${path}` : path)
+  if (/e[- ]?fakt[úu]r|peppol|digit[aá]ln(?:y|eho|ý)\s+pošt|pošt[aá]r/i.test(question)) {
+    const [binding, unpaid] = await Promise.all([
+      db.prepare('SELECT participant FROM peppol_bindings WHERE company_id = ?').bind(company.id).first<{ participant: string }>(),
+      receivedUnpaid(db, company.id),
+    ])
+    if (binding) {
+      answer.paragraphs.push(
+        'Vaša firma je pripojená na digitálneho poštára.',
+        unpaid > 0
+          ? `${unpaid} ${plural(unpaid, 'prijatá e-faktúra', 'prijaté e-faktúry', 'prijatých e-faktúr')} ešte ${plural(unpaid, 'čaká', 'čakajú', 'čaká')} na úhradu. Otvorte ich: ${here('/app/prijate')}.`
+          : `Prijaté e-faktúry nájdete na ${here('/app/prijate')}; stav každej odoslanej je pri jej faktúre.`,
+      )
+    } else {
+      answer.paragraphs.push(
+        'Vaša firma ešte nie je pripojená na digitálneho poštára. Pripojenie potvrdí konateľ na portáli finančnej správy a my ho prijmeme.',
+        `Dovtedy prijmeme e-faktúru aj ako súbor XML: nahrajte ho na ${here('/app/doklady')} alebo prepošlite na adresu firmy.`,
+      )
+    }
+    source('E-faktúry', 'Pripojenie na digitálneho poštára a prijaté e-faktúry.', here('/app/prijate'))
+    return true
+  }
+  if (/vystav.*fakt[úu]r|fakt[úu]r.*vystav|nov[úu].*fakt[úu]r|fakt[úu]r.*nov[úu]/i.test(question)) {
+    answer.paragraphs.push(`Novú faktúru vystavíte na ${here('/app/faktury/nova')}: odberateľ, položky a splatnosť sa pred uložením ukážu na kontrolu.`)
+    source('Nová faktúra', 'Formulár vystaví faktúru, dobropis aj zálohovú faktúru.', here('/app/faktury/nova'))
+    return true
+  }
+  if (/nahra|odfot|fotk|sken|pridaj.*doklad|doklad.*pridaj|posla.*doklad|pošl.*doklad/i.test(question)) {
+    answer.paragraphs.push(`Doklady pridáte na ${here('/app/doklady')}: fotku, PDF alebo e-faktúru ako súbor XML. Poslať ich môžete aj e-mailom na adresu firmy.`)
+    source('Doklady', 'Nahratie, čítanie a spárovanie s platbou.', here('/app/doklady'))
+    return true
+  }
+  if (/upomienk|urgov/i.test(question)) {
+    const day = amlToday()
+    const named = question.match(/\d{4,}/g) ?? []
+    const overdue = named.length
+      ? await db
+          .prepare(
+            `SELECT i.id, i.number, i.customer_name FROM invoices i WHERE i.company_id = ? AND i.status = 'issued' AND i.kind = 'invoice'
+               AND i.due_on IS NOT NULL AND i.due_on < ? AND (${named.slice(0, 4).map(() => "i.number LIKE '%' || ? || '%'").join(' OR ')})
+               AND NOT EXISTS (SELECT 1 FROM links l WHERE l.document_id = i.document_id) ORDER BY i.due_on LIMIT 1`,
+          )
+          .bind(company.id, day, ...named.slice(0, 4))
+          .first<{ id: string; number: string; customer_name: string | null }>()
+      : null
+    if (overdue) {
+      answer.paragraphs.push(`Upomienku pripraví stránka faktúry ${overdue.number}: ${here(`/app/faktury/${overdue.id}`)}. Firmony ju za klienta neodosiela; odoslanie potvrdí klient priamo na stránke.`)
+    } else if (named.length > 0) {
+      answer.paragraphs.push('Takú neuhradenú faktúru po splatnosti teraz nevidíme. Skontrolujte číslo; upomienku pripraví stránka každej neuhradenej faktúry.')
+    } else {
+      const issued = await unpaidIssued(db, company.id)
+      const over = issued.filter((i) => i.day < day)
+      answer.paragraphs.push(
+        over.length > 0
+          ? `Po splatnosti ${plural(over.length, 'je', 'sú', 'je')} ${over.length} ${plural(over.length, 'vystavená faktúra', 'vystavené faktúry', 'vystavených faktúr')}. Pri každej pripraví stránka upomienku s úrokmi z omeškania: ${here('/app/faktury')}.`
+          : `Medzi vystavenými faktúrami teraz nevidíme žiadnu po splatnosti. Upomienku pripraví stránka každej neuhradenej faktúry: ${here('/app/faktury')}.`,
+      )
+    }
+    source('Upomienka', 'Text a odoslanie upomienky pripravuje stránka faktúry.', here('/app/faktury'))
+    return true
+  }
+  return false
 }
 
 /** All values and links are read by Firmony. The external model receives none of this context. */
@@ -88,8 +165,11 @@ export async function assistantAnswer(db:D1Database,s:AssistantScope,company:Com
     source('Chýbajúce podklady','Konkrétne platby a bezpečné pridanie dokladu.',team?root:'/app/platby')
     if(h&&h.state!=='cancelled'&&h.state!=='completed'&&h.clientAction)source('Doplnenie k prevzatiu',h.clientAction,team?`${root}/prevzatie`:'/app/prechod#koordinacia')
     if(topic==='next') {
-      answer.paragraphs.push(team?'Pracovisko firmy obsahuje aktuálne podklady a odborné úkony.':'Na prehľade firmy sú aj ostatné aktuálne úlohy vrátane banky, schvaľovania a povinností na úhradu. Otvorte ho pred rozhodnutím, čo má prednosť.')
-      source(team?'Pracovisko firmy':'Vaše aktuálne úlohy','Úlohy vybavíte priamo na pôvodnom pracovisku.',root)
+      const acted=await actionAnswer(db,company,team,root,question,answer,source)
+      if(!acted) {
+        answer.paragraphs.push(team?'Pracovisko firmy obsahuje aktuálne podklady a odborné úkony.':'Na prehľade firmy sú aj ostatné aktuálne úlohy vrátane banky, schvaľovania a povinností na úhradu. Otvorte ho pred rozhodnutím, čo má prednosť.')
+        source(team?'Pracovisko firmy':'Vaše aktuálne úlohy','Úlohy vybavíte priamo na pôvodnom pracovisku.',root)
+      }
     }
   } else if(topic==='deadlines') {
     const day=amlToday(),[dues,byMonth,bills]=await Promise.all([
@@ -169,7 +249,11 @@ export async function assistantAnswer(db:D1Database,s:AssistantScope,company:Com
     const named = /fakt[úu]r/i.test(question) ? (question.match(/\d{4,}/g) ?? []) : []
     const hit = named.map((n) => facts.incoming.find((i) => i.label.includes(n))).find((i) => i !== undefined)
     // A question about the balance answers the balance itself; the payout question keeps the window answer.
-    if (/zostatok|na [úu](?:č|ct)e/i.test(question) && !/vyplat|výplat/i.test(question)) {
+    let acted = false
+    acted = await actionAnswer(db, company, team, root, question, answer, source)
+    if (acted) {
+      // The chore has its exact link; the money view adds nothing.
+    } else if (/zostatok|na [úu](?:č|ct)e/i.test(question) && !/vyplat|výplat/i.test(question)) {
       if (facts.balanceCents === null) {
         answer.paragraphs.push('Zostatok na účte zatiaľ nevidíme. Prepojte banku alebo pridajte výpis a doplníme ho.', 'Čo Vám príde, čo odíde a známe záväzky nájdete medzitým na prehľade firmy.')
       } else {
@@ -196,6 +280,7 @@ export async function assistantAnswer(db:D1Database,s:AssistantScope,company:Com
       answer.paragraphs.push(dueOut.length ? 'Na najbližších 30 dní sú známe tieto platby von:' : 'Na najbližších 30 dní nie je známa žiadna platba von.')
       for (const o of dueOut.slice(0, 6)) answer.paragraphs.push(`${o.label} - ${dayName(o.day, day)}, ${formatEurExact(o.cents)}`)
       if (dueOut.length > 6) answer.paragraphs.push('Celý zoznam je na prehľade Peniaze vopred.')
+      answer.paragraphs.push(team ? `Úhrady pripravíte jedným krokom na ${root}/kniha/platby.` : 'Úhrady pripravíte jedným krokom na /app/platby; faktúry dodávateľov, ktoré majú byť zaplatené, potvrdíte na /app/schvalovanie.')
       source('Peniaze vopred', 'Známe záväzky z termínov a faktúr.', '/app')
     } else {
       // A question that names a payout amount gets the verdict; without an amount, the window itself answers.
@@ -212,7 +297,7 @@ export async function assistantAnswer(db:D1Database,s:AssistantScope,company:Com
         answer.paragraphs.push('Toto je pohľad na peniaze, nie na zisk, a ráta len s tým, čo je v evidencii. Presnú sumu výplaty si skúste na prehľade; pred rozhodnutím sa poraďte s účtovníčkou.')
       }
     }
-    source('Peniaze vopred','Výpočet z účtov, faktúr a termínov na prehľade firmy.',team?root:'/app')
+    if (!acted) source('Peniaze vopred','Výpočet z účtov, faktúr a termínov na prehľade firmy.',team?root:'/app')
   } else {
     answer.paragraphs.push('Táto otázka potrebuje odborné posúdenie. Asistent Vám nebude určovať daň, účtovný predpis alebo právny postup bez kontroly. Otázku môžete odovzdať účtovníčke; pred odoslaním uvidíte celý text.')
     source(team?'Pracovisko firmy':'Správy s účtovníčkou','Odborná odpoveď a potrebné doplnenia zostanú v aplikácii.',team?root:'/app/spravy')

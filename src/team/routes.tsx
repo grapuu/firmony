@@ -322,6 +322,7 @@ import {
 } from '../views/team'
 import { team as t } from './copy'
 import {
+  autoQueue,
   bookingQueue,
   canSee,
   endedCompanies,
@@ -5048,8 +5049,8 @@ teamRoutes.get('/klienti/:id/kniha/:file', async (c) => {
 
 teamRoutes.get('/doklady', async (c) => {
   const who = c.get('who')
-  const docs = await bookingQueue(c.env.DB, who.user, demoOn(c))
-  return shell(c, 'queue', t.queue.title, <QueuePage docs={docs} flash={flashOf(c)} />)
+  const [docs, auto] = await Promise.all([bookingQueue(c.env.DB, who.user, demoOn(c)), autoQueue(c.env.DB, who.user, demoOn(c))])
+  return shell(c, 'queue', t.queue.title, <QueuePage docs={docs} auto={auto} flash={flashOf(c)} />)
 })
 
 /** Payments of the company that this document may belong to, best first. */

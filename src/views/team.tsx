@@ -26,7 +26,7 @@ import { addDays, endingOf, type Ending } from '../app/ending'
 import { team as t } from '../team/copy'
 import { MonyBubble } from './mony'
 import type { MonyAudience } from '../assistant/mony'
-import { clientDone, type ClientRow, type InvestorRequest, type QueueDoc, type Request, type Rule, type TeamMember, type Thread, type ToCheck } from '../team/store'
+import { clientDone, type AutoQueued, type ClientRow, type InvestorRequest, type QueueDoc, type Request, type Rule, type TeamMember, type Thread, type ToCheck } from '../team/store'
 import { Tile } from './home'
 import { BarMenu, Flash, Heading, InsideHead, planName } from './inside'
 import { dayOf, groupIban, whenName } from './inside-pages'
@@ -1180,7 +1180,7 @@ const Thread: FC<{ messages: Message[]; now: number }> = ({ messages, now }) =>
 // Na zaúčtovanie, Správy
 // ---------------------------------------------------------------------------------------------------------------
 
-export const QueuePage: FC<{ docs: QueueDoc[]; flash?: string | null }> = ({ docs, flash }) => {
+export const QueuePage: FC<{ docs: QueueDoc[]; auto: AutoQueued[]; flash?: string | null }> = ({ docs, auto, flash }) => {
   const groups = new Map<string, QueueDoc[]>()
   for (const d of docs) groups.set(d.companyName, [...(groups.get(d.companyName) ?? []), d])
   return (
@@ -1190,6 +1190,29 @@ export const QueuePage: FC<{ docs: QueueDoc[]; flash?: string | null }> = ({ doc
         <p class="phead__lead">{t.queue.lead}</p>
       </header>
       <Flash text={flash} />
+      {auto.length > 0 && (
+        <section class="month" aria-label={t.queue.autoTitle}>
+          <h2 class="month__title">
+            {t.queue.autoTitle} <span class="count count--blue">{auto.length}</span>
+          </h2>
+          <p class="month__lead">{t.queue.autoLead}</p>
+          <ul class="rows rows--card">
+            {auto.map((a) => (
+              <li class="row" key={a.id}>
+                <a class="row__link" href={`/ucto/klienti/${a.companyId}`}>
+                  <span class="row__text">
+                    <span class="row__title">{a.companyName}</span>
+                    <span class="row__sub row__sub--text">{a.party ?? ''}</span>
+                  </span>
+                  <span class="row__end">
+                    <span class="pill pill--blue">{t.queue.pill.check}</span>
+                  </span>
+                </a>
+              </li>
+            ))}
+          </ul>
+        </section>
+      )}
       {docs.length === 0 ? (
         <section class="nothing">
           <Tile art={ART.seal} size="lg" />

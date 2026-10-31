@@ -581,6 +581,8 @@ export const team = typesetAll({
     serif: 'Od najstaršieho.',
     lead: 'Doklady všetkých Vašich klientov, ktoré čakajú na zaúčtovanie.',
     empty: 'Nič nečaká na zaúčtovanie.',
+    autoTitle: 'Samo zaúčtované · na kontrolu',
+    autoLead: 'Zaúčtoval ich softvér. Vaša kontrola potvrdí, že ich drží správne.',
     pill: { manual: 'Doplniť údaje', duplicate: 'Možný duplikát', rule: 'Podľa pravidla', ai: 'Návrh od softvéru', check: 'Na kontrolu' },
   },
   inbox: {

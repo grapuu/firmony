@@ -1,4 +1,5 @@
 import { accessOpenSql, archiveDueSql, AML_TODAY_SQL } from '../aml/retention'
+import { autoReviewedSql } from '../aml/auto-review-model'
 import { CURRENT_OFFICER_SQL } from '../aml/schema'
 import { quoteSql } from '../aml/model'
 // The accountants' side in the database. An accountant sees the companies she is assigned to; an administrator
@@ -375,6 +376,38 @@ export async function teamCounts(db: D1Database, user: User, demo: boolean): Pro
       .bind(...v.binds),
   ])
   return { queue: queue?.results[0]?.n ?? 0, inbox: inbox?.results[0]?.n ?? 0, requests: isAdmin(user) ? await newRequests(db) : 0 }
+}
+
+/** A document the app booked by itself and nobody checked since (its company, what it was and when), across the
+ *  clients somebody of the team may see: the queue page's own section, oldest first. */
+export interface AutoQueued {
+  id: string
+  companyId: string
+  companyName: string
+  party: string | null
+  totalCents: number | null
+  bookedAt: number
+}
+
+export async function autoQueue(db: D1Database, user: User, demo: boolean): Promise<AutoQueued[]> {
+  const v = visible(user, demo)
+  const rows = await db
+    .prepare(
+      `SELECT d.id, d.company_id, c.name AS company_name, d.party, d.total_cents, d.booked_at
+       FROM documents d JOIN companies c ON c.id = d.company_id
+       WHERE d.booked_by = 'auto' AND NOT (${autoReviewedSql('d')}) AND d.deleted_at IS NULL AND ${v.sql}
+       ORDER BY d.booked_at, d.company_id LIMIT 200`,
+    )
+    .bind(...v.binds)
+    .all<{ id: string; company_id: string; company_name: string; party: string | null; total_cents: number | null; booked_at: number }>()
+  return rows.results.map((r) => ({
+    id: String(r.id),
+    companyId: String(r.company_id),
+    companyName: String(r.company_name),
+    party: r.party,
+    totalCents: r.total_cents,
+    bookedAt: Number(r.booked_at),
+  }))
 }
 
 /** A code for the address documents are forwarded to: eight letters and digits that cannot be mistaken for each other. */

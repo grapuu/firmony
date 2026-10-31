@@ -1,5 +1,19 @@
 # Firmony: progress of the continuation
 
+## Siedma vlna (Cline, 31. október 2026 CEST) — tri páky naraz
+
+- **Samouzavieranie hneď.** `readAll` (nahratie, e-mail, e-faktúra) po dočítaní a spárovaní ihneď spustí
+  `autoBook` pre firmu: knihy sa uzavrú v sekundách, nie až pri najbližšom ticku. Na stránke fronty
+  `/ucto/doklady` pribudla sekcia **„Samo zaúčtované · na kontrolu“** — všetci klienti tímu naraz,
+  najstaršie prvé, odkaz na stranu klienta.
+- **Mony koná.** Otázky „vystav faktúru“, „pošli upomienku (na faktúru N)“, „pridám doklad“ a „čo zaplatiť“
+  dostanú presný odkaz na stránku, ktorá úkon vykoná (faktúra, upomienka s úrokmi pri konkrétnej faktúre po
+  splatnosti, platby/schvaľovanie, doklady). Asistent sám nič neposiela ani nezapisuje — koná vždy pôvodný
+  overený formulár aplikácie po potvrdení človekom.
+- **E-faktúra 2027.** Mony odpovedá na otázky o e-faktúrach z údajov firmy: stav pripojenia na digitálneho
+  poštára (`peppol_bindings`) a počet prijatých e-faktúr čakajúcich na úhradu; bez pripojenia ponúkne príjem
+  ako súbor XML. Sieť Peppol, príjem, stavy a validácie UBL/EN 16931/BIS 3.0 už boli nasadené skôr.
+
 ## Šiesta vlna (Cline, 30. október 2026 CEST)
 
 - **Schválenka zmlúv v produkčnej verifikácii.** `/healthz` odteraz hlási aj stav `CONTRACT_RELEASE`

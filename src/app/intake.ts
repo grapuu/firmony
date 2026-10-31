@@ -117,10 +117,17 @@ export async function keepFilesFor(
   return { kept, work }
 }
 
-/** Has every new document read, then pairs what can be paired. */
+/** Has every new document read, then pairs what can be paired, then books what the app may book by itself: the
+ *  books close in seconds, not on the next scheduled run. */
 export async function readAll(env: AppBindings, company: Company, ids: string[], match: boolean): Promise<void> {
   for (const id of ids) await readOne(env, company, id)
   if (match || ids.length > 0) await matchCompany(env.DB, company.id)
+  try {
+    const { autoBook } = await import('./autobook')
+    await autoBook(env.DB, company.id)
+  } catch (err) {
+    console.error('booking by itself failed', err instanceof Error ? err.name : 'error')
+  }
 }
 
 export async function readOne(env: AppBindings, company: Company, id: string): Promise<void> {

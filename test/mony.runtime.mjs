@@ -116,6 +116,33 @@ export async function checkMony({ mf, db, site, mony, provider, nowS }) {
   res = await ask(client, { question: 'Kedy mám zaplatiť DPH?', page: '/app', history: [] })
   text = await res.text()
   check('mony: a question about what goes out lists the known dues', res.status === 200 && (text.includes('platby von') || text.includes('nie je známa žiadna platba von')), `${res.status} ${text.slice(0, 120)}`)
+  provider.next = { topic: 'money' }
+  res = await ask(client, { question: 'Čo mám zaplatiť dodávateľom?', page: '/app', history: [] })
+  text = await res.text()
+  check('mony: a question about paying points to the payment orders and the approvals', res.status === 200 && text.includes('/app/platby') && text.includes('/app/schvalovanie'), `${res.status} ${text.slice(0, 160)}`)
+  // Mony acts (30 October 2026): a chore gets the exact page that does it; the app's own form performs it.
+  const pastDay = ymd(new Date(nowS * 1000 - 10 * 86_400_000))
+  await db
+    .prepare("INSERT INTO invoices (id, company_id, created_at, status, year, seq, number, customer_name, issued_on, delivered_on, due_on, base_cents, vat_cents, total_cents, token) VALUES ('i-mony-2', 'co-mony', ?, 'issued', 2026, 2, '2026998', 'TEST-ONLY Odberateľ', ?, ?, ?, 10000, 0, 10000, 'tok-mony-2')")
+    .bind(nowS, pastDay, pastDay, pastDay)
+    .run()
+  provider.next = { topic: 'next' }
+  res = await ask(client, { question: 'Ako vystavím novú faktúru?', page: '/app', history: [] })
+  text = await res.text()
+  check('mony: a question about a new invoice points to the invoice form', res.status === 200 && text.includes('/app/faktury/nova'), `${res.status} ${text.slice(0, 160)}`)
+  provider.next = { topic: 'next' }
+  res = await ask(client, { question: 'Ako pridám doklad?', page: '/app', history: [] })
+  text = await res.text()
+  check('mony: a question about adding a document points to the documents page', res.status === 200 && text.includes('/app/doklady'), `${res.status} ${text.slice(0, 160)}`)
+  provider.next = { topic: 'next' }
+  res = await ask(client, { question: 'Pošli upomienku na faktúru 2026998', page: '/app', history: [] })
+  text = await res.text()
+  check('mony: a reminder names the exact overdue invoice and the page that prepares it', res.status === 200 && text.includes('Upomienku pripraví') && text.includes('2026998') && text.includes('/app/faktury/i-mony-2'), `${res.status} ${text.slice(0, 200)}`)
+  provider.next = { topic: 'next' }
+  res = await ask(client, { question: 'Ako prijmem e-faktúru?', page: '/app', history: [] })
+  text = await res.text()
+  check('mony: an e-invoice question answers the postman binding from the company data, never invented', res.status === 200 && text.includes('digitálneho poštára') && text.includes('ešte nie je pripojená') && text.includes('/app/doklady'), `${res.status} ${text.slice(0, 200)}`)
+  await db.prepare("DELETE FROM invoices WHERE id = 'i-mony-2'").run()
   await db.prepare("DELETE FROM invoices WHERE id = 'i-mony-1'").run()
   // A payout amount named in the question is checked by the same verdict as the home page's form.
   await db.prepare("INSERT INTO accounts (id, company_id, iban, balance_cents, balance_on) VALUES ('acc-mony-1', 'co-mony', 'SK00TEST', 100000, ?)").bind(todayDay).run()
