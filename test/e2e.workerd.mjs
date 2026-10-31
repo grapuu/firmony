@@ -67,6 +67,8 @@ import { checkInvoicingRuntime } from './invoicing.runtime.mjs'
 import { checkAnalyticsRuntime } from './analytics.runtime.mjs'
 import { assistantProviderFixture } from './assistant.fixture.mjs'
 import { monyProviderFixture } from './mony.fixture.mjs'
+import { checkMigrations } from './migrations.runtime.mjs'
+import { checkLinksGuards } from './links-guards.runtime.mjs'
 import { checkMony } from './mony.runtime.mjs'
 import { checkVatRegistration } from './vat-registration.runtime.mjs'
 import { checkTransactionTax } from './transaction-tax.runtime.mjs'
@@ -121,7 +123,7 @@ const mf = new Miniflare(
         modulesRoot: dist,
         modules: [{ type: 'ESModule', path: `${dist}/index.js` }],
         compatibilityDate: '2026-10-01',
-        d1Databases: { DB: 'firmony-e2e' },
+        d1Databases: { DB: 'firmony-e2e', DB_MIGRATIONS: 'firmony-migrations' },
         r2Buckets: { FILES: 'firmony-e2e-files' },
         bindings: { TEAM_BOOTSTRAP_EMAIL: 'ahoj@firmony.io', TEAM_BOOTSTRAP_TOKEN: TEST_BOOTSTRAP, TEAM_BOOTSTRAP_EXPIRES_AT: String(Math.floor(Date.now() / 1000) + 3600), CONTRACT_RELEASE: JSON.stringify({ catalogueHash: await contractCatalogueHash(), legalReview: 'TEST-ONLY lawyer fixture', insuranceReview: 'TEST-ONLY insurer fixture', validUntil: Math.floor(Date.now() / 1000) + 3600 }), ANTHROPIC_API_KEY: 'pretend', ENABLE_BANKING_APP: bank.app, ENABLE_BANKING_KEY: bank.privateKey, ANNOUNCE: '1' },
         serviceBindings: { EMAIL: 'pretend-mail' },
@@ -5083,6 +5085,8 @@ check('every file in it reads, every sum right', archive !== null && archive.len
 const named = (name) => archive?.find((f) => f.name === name)
 const text = (f) => new TextDecoder().decode(f?.data ?? new Uint8Array())
 await checkPeriodLocks({ db, acc, admin, anna, nowS, lucia, today: day(0), files, unzip, text })
+await checkMigrations({ mf })
+await checkLinksGuards({ db, nowS, today: day(0), lucia })
 
 const validManifest = (contents) => {
   const m = JSON.parse(text(contents.find((f) => f.name === 'manifest.json')))

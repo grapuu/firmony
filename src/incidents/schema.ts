@@ -1,3 +1,10 @@
+/** The evidence-hold delete guard of a company's data table, exactly as INCIDENT_SCHEMA makes it; step 93 calls the
+ *  same generator for `links` after its table was recreated (31 October 2026). */
+export const holdDeleteGuard = (t: string): string =>
+  `CREATE TRIGGER ${t}_hold_delete BEFORE DELETE ON ${t}
+      WHEN EXISTS (SELECT 1 FROM evidence_holds WHERE company_id = OLD.company_id AND released_at IS NULL) OR EXISTS (SELECT 1 FROM incidents WHERE company_id = OLD.company_id AND closed_at IS NULL)
+      BEGIN SELECT RAISE(ABORT, 'Evidence hold prevents deletion'); END`
+
 export const INCIDENT_SCHEMA = [
   'ALTER TABLE companies ADD COLUMN purge_delete_started_at INTEGER',
   'ALTER TABLE companies ADD COLUMN records_delete_started_at INTEGER',

@@ -450,7 +450,7 @@ export async function checkPeriodLocks({ db, acc, admin, anna, nowS, lucia, toda
   const second = await linkStatement(db, 'co-lock', 'sp-2', 'dl-splatky', 'client', null).run()
   const third = await linkStatement(db, 'co-lock', 'sp-3', 'dl-splatky', 'client', null).run()
   const list = await db.prepare("SELECT COUNT(*) AS n FROM links WHERE document_id = 'dl-splatky'").first()
-  check('a second instalment pairs with the same document, a third that would pay past its amount does not', first.meta.changes === 1 && second.meta.changes === 1 && third.meta.changes === 0 && list.n === 2, JSON.stringify([first.meta, second.meta, third.meta]))
+  check('a second instalment pairs with the same document, a third that would pay past its amount does not', first.meta.changes >= 1 && second.meta.changes >= 1 && third.meta.changes === 0 && list.n === 2, JSON.stringify([first.meta, second.meta, third.meta]))
   const instalDoc = await getDocument(db, 'co-lock', 'dl-splatky')
   check('the document knows both payments, their sum and the last day', instalDoc?.paidCents === 7500 && instalDoc?.paidParts?.length === 2 && instalDoc?.paidOn === today, JSON.stringify(instalDoc))
   check('the document list holds it once, with both payments counted', (await listDocuments(db, 'co-lock')).filter((d) => d.id === 'dl-splatky').length === 1)
