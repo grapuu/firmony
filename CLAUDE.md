@@ -4,6 +4,25 @@ He asked for everything to be kept so that a new chat carries on ("chcem ísť d
 kontext"). These notes are the whole memory of the work; no chat, scratch file, task list or browser tab carries
 over. Bring this section up to date first whenever a session ends.
 
+**Stav 31. 10. 2026 dopoludnia (Claude, vetva `claude/otvorene`, NEZLÚČENÁ, nenasadená):** na `main` medzitým pracoval
+DeepSeek (26 commitov 30.–31. 10., vlny 1 až 7: AI → softvér všade, TERMS_VERSION 2026-10-30, Peniaze vopred, Mony
+odpovedá z dát aplikácie (modelu ide len text otázky), samoúčtovanie hneď po príjme dokladu, `public/_headers`); CI na
+`2adfc8e` zelené, live. Táto vetva drží prácu Claude, ktorá na `main` nie je: (1) **klient na stretnutí** (`src/meeting/`,
+`src/views/meeting.tsx`, `public/live.js`, `src/aml/in-person*.ts`, `src/team/paper-client.ts`, schéma krok **91**,
+`test/meeting.runtime.mjs`): papierová zmluva, QR pre telefón konateľa, vyhlásenie na jeho mobile, OP odfotený určenou
+osobou (§ 8 ods. 1 písm. a), kontroly a schválenie jedným ťuknutím, klient z papiera, vstup do aplikácie; e-mail Firmony
+(@firmony.io) ani člena tímu nikdy nie je klientov; (2) **opravy auditov** s testami: DPH (§ 53b doklad raz v období,
+oprava bez odpočtu nič, doklad z dňa podania pred značkou), knihy (prevzatie v priebehu roka drží náklady a výnosy, varovanie
+`midyear`, `carSale`, r180/r290 zostatkové ceny, r302 § 17 ods. 34, kurzový rozdiel len pri úplnej úhrade), mzdy (starobný a
+výsluhový dôchodca bez mesačnej NČZD, FS 260857; PN z 2025 10 dní a strop 2025; strop DVZ zaokrúhlený nahor 100,2083 €;
+ročný bonus súčtom zaokrúhlených mesiacov; odpočítateľná položka ZP len pracovný pomer), kaucia po skončení zmluvy
+(`depositsLeft`, alarm `deposits` v prehľade; **sekcia na stránke Fakturácia a akcia „vrátená“ ešte NIE SÚ dorobené**), návody
+(vystavené faktúry sa nerátajú, poštár pred 1. 1. 2027). Units na vetve zelené, runtime (meeting) po oprave `plain` ešte
+nespustený. **Zlúčenie do main má 3 konflikty**: `public/inside.css`, `src/team/routes.tsx`, `test/founding.runtime.mjs`
+(obe strany opravovali bratislavský deň platby). Ďalší krok: dorobiť kauciu na Fakturácii, zlúčiť, celé sady (runtime Node 24),
+pushnúť. Nájdené na `main` (neopravené, jeho pokyn „nemeň nič“): `/inside.css` v `views/aml-admission.tsx` a
+`/free-invoice.js` v `views/free-tools.tsx` bez `asset()`, pritom `_headers` dáva `*.css`/`*.js` immutable na rok.
+
 **Služba otvorená, priznanie pre investorov zadarmo a logo v e-mailoch, 29. 10. 2026 neskoro večer (Claude, `main`):** jeho
 správy 21:57 (web sa tvári ako bežiaca služba, kto sa zaregistruje, toho kontaktujeme; platobná brána netreba; priznanie pre
 investorov zadarmo) a 22:01 (logo vo všetkých e-mailoch; stratégia expertky, tímu a prvých klientov). **Web:** preč
