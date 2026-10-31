@@ -936,7 +936,7 @@ export const app = typesetAll({
     paidMonth: 'Zaplatené tento mesiac',
     empty: 'Zatiaľ ste nevystavili žiadnu faktúru.',
     emptyLead: 'Prvá trvá minútu. Odberateľa doplníme z registra podľa IČO.',
-    state: { draft: 'Koncept', unpaid: 'Nezaplatená', overdue: 'Po splatnosti', paid: 'Zaplatená', credit: 'Dobropis' },
+    state: { draft: 'Koncept', unpaid: 'Nezaplatená', partial: 'Čiastočne zaplatená', overdue: 'Po splatnosti', paid: 'Zaplatená', credit: 'Dobropis' },
     paidOn: (day: string) => typeset(`Zaplatená ${day}`),
     dueOn: (day: string) => typeset(`Splatná ${day}`),
     draftName: 'Koncept bez čísla',

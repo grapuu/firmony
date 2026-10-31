@@ -39,7 +39,7 @@ export interface LateView {
 
 const addDaysTo = (day: string, days: number) => new Date(Date.parse(`${day}T12:00:00Z`) + days * 86400000).toISOString().slice(0, 10)
 
-const PILL: Record<InvoiceState, string> = { draft: 'pill--grey', unpaid: 'pill--blue', overdue: 'pill--amber', paid: 'pill--ok', credit: 'pill--grey' }
+const PILL: Record<InvoiceState, string> = { draft: 'pill--grey', unpaid: 'pill--blue', partial: 'pill--blue', overdue: 'pill--amber', paid: 'pill--ok', credit: 'pill--grey' }
 
 /** Where the company's logo is served, with its key's end so a new picture is not taken from a cache. */
 export const logoSrc = (seller: Pick<Company, 'logoKey'>, path: string): string | null => (seller.logoKey ? `${path}?v=${seller.logoKey.slice(-12)}` : null)
@@ -57,7 +57,7 @@ export const InvoicesPage: FC<{ invoices: StoredInvoice[]; today: string; flash?
   const sum = (pick: (i: StoredInvoice) => boolean) => invoices.filter(pick).reduce((total, i) => total + eurosOf(i), 0)
   // A credit note lowers what its invoice still asks, while that invoice is not paid.
   // Requests for advances are not receivables of the books; what they ask comes back as advances and final invoices.
-  const open = new Map(invoices.filter((i) => i.kind === 'invoice' && (stateOf(i, today) === 'unpaid' || stateOf(i, today) === 'overdue')).map((i) => [i.id, stateOf(i, today)]))
+  const open = new Map(invoices.filter((i) => i.kind === 'invoice' && (stateOf(i, today) === 'unpaid' || stateOf(i, today) === 'overdue' || stateOf(i, today) === 'partial')).map((i) => [i.id, stateOf(i, today)]))
   const credited = (pick: (state: InvoiceState | undefined) => boolean) => sum((i) => i.kind === 'credit' && i.status === 'issued' && i.corrects !== null && open.has(i.corrects) && pick(open.get(i.corrects)))
   const unpaid = sum((i) => open.has(i.id)) + credited(() => true)
   const overdue = sum((i) => open.get(i.id) === 'overdue') + credited((state) => state === 'overdue')
