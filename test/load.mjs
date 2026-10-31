@@ -247,5 +247,13 @@ const size = await (await mf.getD1Database('DB')).prepare("SELECT (SELECT COUNT(
 const report = { at: new Date().toISOString(), docsPerMonth: DOCS, months: MONTHS, people: PEOPLE, rows: size, seedSeconds: Math.round(seedSeconds), results }
 writeFileSync(`${out}/report.json`, JSON.stringify(report, null, 2))
 console.log(`\n${size.docs} documents, ${size.payments} payments, ${size.people} employees; seeded in ${Math.round(seedSeconds)} s. Report: ${out}/report.json`)
+// A page above two seconds is a defect under the load (his word of 31 October 2026): it must be sped up. The warm
+// opening decides (the slowest of the three is reported beside it, the first opening carries the runtime's start).
+const SLOW_MS = 2000
+const slow = results.filter((r) => r.ms > SLOW_MS)
+if (slow.length > 0) {
+  console.log(`\n${slow.length} pages above ${SLOW_MS / 1000} s (warm open; the worst of three in parentheses):`)
+  for (const r of slow) console.log(`  ${String(r.ms).padStart(6)} ms (${String(r.worst).padStart(6)} ms)  ${r.name}  ${r.path}`)
+}
 await mf.dispose()
-if (results.some((r) => r.status !== 200)) process.exitCode = 1
+if (results.some((r) => r.status !== 200) || slow.length > 0) process.exitCode = 1

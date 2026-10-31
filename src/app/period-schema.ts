@@ -184,6 +184,30 @@ export const assetVatGuards: string[] = [
   ...rowsGuard('asset_vat_uses', (r) => locked(`${r}.company_id`, `${r}.from_year || '-12-31'`), ['company_id', 'asset_id', 'from_year', 'use', 'share', 'business', 'deleted_at']),
 ]
 
+/** The documents' and links' guards made again (step 92): the links table is recreated for instalments, and the
+ *  triggers that read it are dropped first and made again after, so no trigger ever compiles against a missing
+ *  table (31 October 2026). The links table's own triggers drop with it; the payments' UPDATE and DELETE read it. */
+export const linksRecreationGuards = (): { before: string[]; after: string[] } => ({
+  before: [
+    'DROP TRIGGER IF EXISTS documents_locked_insert',
+    'DROP TRIGGER IF EXISTS documents_locked_update',
+    'DROP TRIGGER IF EXISTS documents_locked_delete',
+    'DROP TRIGGER IF EXISTS payments_locked_update',
+    'DROP TRIGGER IF EXISTS payments_locked_delete',
+  ],
+  after: [
+    ...rowsGuard('documents', (r) => `(${postedDocLocked(r)} OR ${docLinked(r)})`, docFields),
+    guard(
+      'payments',
+      'UPDATE',
+      `(${changed(paymentFields)}) AND
+      (${locked('OLD.company_id', 'OLD.booked_on')} OR ${locked('NEW.company_id', 'NEW.booked_on')} OR ${dependentDoc('OLD')} OR ${dependentDoc('NEW')})`,
+    ),
+    guard('payments', 'DELETE', `(${locked('OLD.company_id', 'OLD.booked_on')} OR ${dependentDoc('OLD')})`),
+    ...rowsGuard('links', (r) => linkLockedSql(`${r}.payment_id`, `${r}.document_id`)),
+  ],
+})
+
 export const PERIOD_SCHEMA: string[] = [
   `CREATE TABLE period_locks (
     company_id TEXT PRIMARY KEY, through_on TEXT, version INTEGER NOT NULL CHECK (version > 0), change_id TEXT NOT NULL UNIQUE,

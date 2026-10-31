@@ -18,7 +18,7 @@ import { bratislavaDay } from './time'
 // The database: requests from the site, the outbox of email, and the counters that limit the forms.
 // The schema applies itself on the first request (MIGRATIONS); never edit a step that has reached the live database.
 import { RETENTION } from './config'
-import { PERIOD_SCHEMA, assetVatGuards, badDebtsGuards, closingsGuardsWithoutDistribution, documentsUpdateGuardWith, invoicesUpdateGuard, vatRatiosGuards } from './app/period-schema'
+import { PERIOD_SCHEMA, assetVatGuards, linksRecreationGuards, badDebtsGuards, closingsGuardsWithoutDistribution, documentsUpdateGuardWith, invoicesUpdateGuard, vatRatiosGuards } from './app/period-schema'
 import { CONTRACT_SCHEMA } from './contract-schema'
 import { SECURITY_SCHEMA } from './security/schema'
 import { INCIDENT_SCHEMA } from './incidents/schema'
@@ -1635,8 +1635,10 @@ const MIGRATIONS: readonly string[][] = [
   // static.slov-lex.sk on 31 October 2026): the leave the relationship is on, 'none' without one.
   ["ALTER TABLE employees ADD COLUMN leave_kind TEXT NOT NULL DEFAULT 'none'"],
   // 92: a document paid in instalments (31 October 2026): more payments may pair with one document. `links` is
-  // recreated without the document's primary key (its data kept whole); each pair stays one row.
+  // recreated without the document's primary key (its data kept whole); each pair stays one row. The guards that
+  // read it are dropped first and made again after (period-schema.ts linksRecreationGuards).
   [
+    ...linksRecreationGuards().before,
     `CREATE TABLE IF NOT EXISTS links_installments (
       document_id TEXT NOT NULL,
       payment_id TEXT NOT NULL,
@@ -1650,6 +1652,7 @@ const MIGRATIONS: readonly string[][] = [
     'ALTER TABLE links_installments RENAME TO links',
     'CREATE INDEX IF NOT EXISTS links_document ON links (document_id)',
     'CREATE INDEX IF NOT EXISTS links_payment ON links (payment_id)',
+    ...linksRecreationGuards().after,
   ],
 ]
 
