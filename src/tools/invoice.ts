@@ -20,7 +20,7 @@ export const INVOICE_META = {
 /** Public deployment evidence, kept beside the routes' constants. No invoice or customer data. */
 export const TOOL_DEPLOYMENT_PAGES = [
   { path: TOOLS_PATH, modified: TOOL_UPDATED, markers: [`href="${INVOICE_PATH}"`, 'Vytvoriť faktúru', '/mzdova-kalkulacka'] },
-  { path: INVOICE_PATH, modified: TOOL_UPDATED, markers: ['data-invoice-tool', 'data-download', 'src="/free-invoice.js"', 'id="invoice-nonVat"'] },
+  { path: INVOICE_PATH, modified: TOOL_UPDATED, markers: ['data-invoice-tool', 'data-download', 'src="/free-invoice.js?v=', 'id="invoice-nonVat"'] },
 ]
 
 export interface InvoiceParty { name: string; address: string; ico: string; dic: string; registry: string }
