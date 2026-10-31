@@ -866,6 +866,7 @@ export const team = typesetAll({
       number: 'Chýba číslo dokladu, alebo je dlhšie ako 32 znakov.',
       corrects: 'Chýba číslo opravovanej faktúry.',
       needs7a: 'Služba od zahraničného dodávateľa: firma, ktorá nie je registrovaná pre DPH, sa musí pred takým nákupom registrovať podľa § 7a a DPH z neho zaplatiť.',
+      noRefund7a: 'Oprava znížila DPH pod nulu: osoba registrovaná podľa § 7a nemá nárok na vrátenie, riadok 32 ostáva nula. Skontrolujte doklady.',
       summary: 'Dodanie do EÚ: za obdobie sa podáva aj súhrnný výkaz (nižšie).',
       svVatId: 'Chýba IČ DPH odberateľa z iného štátu EÚ: bez neho faktúra do súhrnného výkazu nepôjde.',
       svMonthly:

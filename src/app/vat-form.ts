@@ -91,12 +91,16 @@ export function vatValues(data: VatData): VatValues {
 /** Hundredths as typed: "12,5" for 1250. */
 const hundredthsText = (n: number): string => `${Math.floor(n / 100)}${n % 100 ? `,${String(n % 100).padStart(2, '0').replace(/0$/, '')}` : ''}`
 
-/** "12,5" or "1 250" in hundredths; null when empty, NaN when it is no quantity. */
+/** "12,5" or "1 250" in hundredths, a third decimal mathematically rounded to two (the control statement's
+ *  MnozstvoType: test/xsd/kv_dph_2025.xsd, "presnosťou na 2 desatinné miesta"); null when empty, NaN when it is
+ *  no quantity. */
 function hundredthsOf(text: string): number | null {
   const plain = text.replace(/\s/g, '')
   if (plain === '') return null
-  const m = /^(\d{1,9})(?:[,.](\d{1,2}))?$/.exec(plain)
-  return m ? Number(m[1]) * 100 + Number((m[2] ?? '').padEnd(2, '0')) : Number.NaN
+  const m = /^(\d{1,9})(?:[,.](\d{1,3}))?$/.exec(plain)
+  if (!m) return Number.NaN
+  const frac = (m[2] ?? '').padEnd(3, '0')
+  return Number(m[1]) * 100 + Math.floor(Number(frac) / 10) + (Number(frac[2]) >= 5 ? 1 : 0)
 }
 
 /** The member states of the one-stop shop (oss.ts): the EU's but Slovakia, Greece as EL, Northern Ireland as XI for goods. */

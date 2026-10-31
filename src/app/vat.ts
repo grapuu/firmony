@@ -490,9 +490,12 @@ export function vatOf(doc: VatDoc, company: VatCompany): { data: VatData; propos
  * before then (§ 20(1), § 19(8)).
  */
 export function taxDay(doc: VatDoc, data: VatData): string {
-  // A correction of the base is reported when it is made (§ 25(2) and § 53(1); for the recapitulative statement § 80(7)):
-  // its own day of issue, not the day of supply of the invoice it corrects, which it may well carry.
-  if (data.corrects) return doc.issuedOn ?? doc.receivedOn
+  // A correction of the base is reported when it is made (§ 25(3) and § 53(2)(a), read in the original at
+  // static.slov-lex.sk on 31 October 2026, the version of 1 January 2027): the supplier in the period in which
+  // the corrective document was issued, the buyer in the period in which it received the document ("dostal
+  // doklad o oprave základu dane"); for the recapitulative statement § 80(7). Never the day of supply the
+  // credit note may carry.
+  if (data.corrects) return isIssued(doc.kind) ? doc.issuedOn ?? doc.receivedOn : doc.receivedOn ?? doc.issuedOn
   const supplied = data.suppliedOn ?? doc.issuedOn ?? doc.receivedOn
   if (data.mode !== 'acquisition' && data.mode !== 'eu_goods' && data.mode !== 'triangle' && data.mode !== 'triangle_in') return supplied
   const fifteenth = `${periodOf(addDays(`${supplied.slice(0, 7)}-28`, 7), false)}-15`
@@ -936,6 +939,7 @@ export type IssueCode =
   | 'number'
   | 'corrects'
   | 'needs7a'
+  | 'noRefund7a'
   | 'summary'
   | 'deduct7a'
   | 'domestic7a'
@@ -1462,7 +1466,11 @@ export function workOut(company: VatCompany, period: string, docs: VatDoc[], fil
     rows.r34 = Math.min(Math.max(0, carriedIn), rows.r32)
     rows.r35 = Math.max(0, rows.r32 - rows.r34)
   } else if (company.status === 'reg7a') {
-    rows.r32 = result
+    // § 7a (read in the original at static.slov-lex.sk on 31 October 2026, the version of 1 January 2027): a person
+    // registered under § 7a is no payer and never deducts, so its return has no row 33 and row 32 is never negative;
+    // what a correction takes below zero is no refund, it is said so for the accountant to check.
+    if (result < 0) issue('warn', 'noRefund7a', null)
+    rows.r32 = Math.max(0, result)
     rows.r35 = Math.max(0, rows.r32 - rows.r34)
   }
   const nothing = ROWS.every((row) => rows[row] === 0)

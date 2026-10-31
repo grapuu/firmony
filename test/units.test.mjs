@@ -3272,9 +3272,9 @@ async function zipped(entries, note) {
       JSON.stringify(triForm({}).errors),
     )
     check(
-      'a correction is reported when it is made: a credit note of goods to the EU carrying its invoice\'s day of supply falls on its own day',
+      'a correction is reported when it is made: an issued one in the period it was issued, a received one in the period it was received (§ 25(3), § 53(2)(a))',
       vat.taxDay({ ...middle, issuedOn: '2027-04-10' }, { ...middle.vat, mode: 'eu_goods', corrects: 'FA-1', suppliedOn: '2027-01-10' }) === '2027-04-10' &&
-        vat.taxDay({ ...lastCustomer, issuedOn: '2027-04-10', receivedOn: '2027-04-12' }, { ...lastCustomer.vat, corrects: 'DE-1', suppliedOn: '2027-01-10' }) === '2027-04-10',
+        vat.taxDay({ ...lastCustomer, issuedOn: '2027-04-10', receivedOn: '2027-04-12' }, { ...lastCustomer.vat, corrects: 'DE-1', suppliedOn: '2027-01-10' }) === '2027-04-12',
     )
     check('a company registered under § 7a as the middle person: nothing filed, said', vat.workOut({ status: 'reg7a', quarterly: false, since: null }, '2027-01', [middle]).issues.some((i) => i.code === 'domestic7a'))
     check(
@@ -3538,6 +3538,8 @@ async function zipped(entries, note) {
     const ctx = { kind: 'invoice_out', payer: true, deduct: false, booking: true, periods: ['2027-01'] }
     const body = (extra) => ({ dph_rezim: 'reverse', dph_dodanie: '15. 1. 2027', dph_icdph: 'SK2020000000', dph_zaklad_0: '6000', ...extra })
     const ok = vatForm.readVat(body({ dph_ptp_druh: 'g', dph_ptp_kod: '7204', dph_ptp_mnozstvo: '1 250,5', dph_ptp_jednotka: 't' }), ctx)
+    const roundedUp = vatForm.readVat(body({ dph_ptp_druh: 'g', dph_ptp_kod: '7204', dph_ptp_mnozstvo: '1,235', dph_ptp_jednotka: 't' }), ctx)
+    const roundedDown = vatForm.readVat(body({ dph_ptp_druh: 'g', dph_ptp_kod: '7204', dph_ptp_mnozstvo: '1,234', dph_ptp_jednotka: 't' }), ctx)
     const missing = vatForm.readVat(body({ dph_ptp_druh: 'g', dph_ptp_kod: '72', dph_ptp_mnozstvo: '', dph_ptp_jednotka: '' }), ctx)
     const taxed = vatForm.readVat(body({ dph_ptp_druh: 'j', dph_zaklad_23: '100', dph_zaklad_0: '' }), ctx)
     check(
@@ -3553,6 +3555,11 @@ async function zipped(entries, note) {
         taxed.errors.base23 === 'zeroOnly' &&
         vatForm.vatValues(ok.data).reverseQuantity === '1250,5',
       JSON.stringify([ok, missing.errors, taxed.errors]),
+    )
+    check(
+      "a quantity with three decimals is mathematically rounded to A.2's two (KV MnozstvoType)",
+      roundedUp.data?.reverse?.quantity === 124 && roundedDown.data?.reverse?.quantity === 123,
+      JSON.stringify([roundedUp.data?.reverse, roundedDown.data?.reverse]),
     )
   }
 
@@ -3675,8 +3682,17 @@ async function zipped(entries, note) {
     valid7a.why,
   )
   check(
-    '§ 7a: a credit note from abroad can make row 32 negative',
-    vat.workOut(reg7a, '2027-01', [doc({ number: 'CN1', vat: v('reverse', [[23, -1000, -230]], { corrects: '5200000001' }) })]).rows.r32 === -230,
+    '§ 7a: row 32 is never negative, the excess is no refund and is said so',
+    (() => {
+      const cn7a = vat.workOut(reg7a, '2027-01', [doc({ number: 'CN1', vat: v('reverse', [[23, -1000, -230]], { corrects: '5200000001' }) })])
+      return cn7a.rows.r32 === 0 && cn7a.rows.r33 === 0 && cn7a.rows.r35 === 0 && cn7a.issues.some((i) => i.code === 'noRefund7a')
+    })(),
+  )
+  // § 25(3) and § 53(2)(a), read in the original at static.slov-lex.sk on 31 October 2026 (the version of 1 January 2027).
+  check(
+    'a received credit note belongs to the period it was received in, an issued one to the period it was issued in',
+    vat.taxDay({ id: 'cn-in', kind: 'invoice_in', issuedOn: '2026-12-28', receivedOn: '2027-01-15' }, { corrects: 'F1', mode: 'domestic', lines: [] }) === '2027-01-15' &&
+      vat.taxDay({ id: 'cn-out', kind: 'invoice_out', issuedOn: '2026-12-28', receivedOn: null }, { corrects: 'F2', mode: 'domestic', lines: [] }) === '2026-12-28',
   )
 
   // Nothing in a month, a refund, a quarter
