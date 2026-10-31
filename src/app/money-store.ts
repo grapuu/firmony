@@ -1,30 +1,29 @@
-// What the money view loads: the issued invoices nobody has paid yet, the received ones the company has not paid,
-// and the taxes and payroll the deadlines know. The view itself (money.ts) is pure; this file only reads.
+// What the money view loads: the issued invoices with something left to pay, the received ones with something left to
+// pay, and the taxes and payroll the deadlines know. The view itself (money.ts) is pure; this file only reads.
 import type { Due } from '../team/deadlines'
 import { app, monthName } from './copy'
 import { periodName } from './vat-store'
 import type { MoneyItem } from './money'
+import { REMAINING_SQL } from './store'
 
 type Row = Record<string, unknown>
 const str = (v: unknown) => (typeof v === 'string' ? v : null)
 
-/** What a euro document still has unpaid of it: its due (or its total) less what its bank payments that pay it
- *  alone paid, summed (a document may be paid in instalments, 31 October 2026). Over the alias d of documents. */
-export const REMAINING_SQL = `COALESCE(d.due_cents, d.total_cents) - COALESCE((SELECT SUM(ABS(p.amount_cents))
-  FROM links l JOIN payments p ON p.id = l.payment_id WHERE l.document_id = d.id AND p.currency = 'EUR'
-    AND (SELECT COUNT(*) FROM links k WHERE k.payment_id = p.id) = 1), 0)`
+/** An issued invoice's remaining amount in its own currency, over the alias i: its total less its paid euros,
+ *  converted at the invoice's booked rate when it is foreign. */
+export const ISSUED_REMAINING = `COALESCE(i.total_cents, 0) - CASE
+  WHEN COALESCE(i.currency, 'EUR') = 'EUR' THEN COALESCE((SELECT SUM(COALESCE(l.amount_cents, ABS(p.amount_cents)))
+    FROM links l JOIN payments p ON p.id = l.payment_id WHERE l.document_id = i.document_id AND p.currency = 'EUR'), 0)
+  ELSE ROUND(COALESCE((SELECT SUM(COALESCE(l.amount_cents, ABS(p.amount_cents)))
+    FROM links l JOIN payments p ON p.id = l.payment_id WHERE l.document_id = i.document_id AND p.currency = 'EUR'), 0) * CAST(REPLACE(i.fx_rate, ',', '.') AS REAL)) END`
 
 /** The company's issued invoices with something left to pay: the money the view expects to come in. */
 export async function unpaidIssued(db: D1Database, company: string): Promise<MoneyItem[]> {
   const rows = await db
     .prepare(
-      `SELECT i.due_on AS day,
-         COALESCE(i.total_cents, 0) - COALESCE((SELECT SUM(ABS(p.amount_cents)) FROM links l JOIN payments p ON p.id = l.payment_id
-           WHERE l.document_id = i.document_id AND p.currency = 'EUR' AND (SELECT COUNT(*) FROM links k WHERE k.payment_id = p.id) = 1), 0) AS cents,
-         i.number AS number, i.customer_name AS name FROM invoices i
+      `SELECT i.due_on AS day, ${ISSUED_REMAINING} AS cents, i.number AS number, i.customer_name AS name FROM invoices i
         WHERE i.company_id = ? AND i.status = 'issued' AND i.kind = 'invoice' AND i.due_on IS NOT NULL AND i.total_cents > 0
-          AND COALESCE(i.total_cents, 0) > COALESCE((SELECT SUM(ABS(p.amount_cents)) FROM links l JOIN payments p ON p.id = l.payment_id
-            WHERE l.document_id = i.document_id AND p.currency = 'EUR' AND (SELECT COUNT(*) FROM links k WHERE k.payment_id = p.id) = 1), 0)
+          AND ${ISSUED_REMAINING} > 0
           AND NOT EXISTS (SELECT 1 FROM ledger_entries ce WHERE ce.document_id = i.document_id AND ce.kind = 'cash' AND ce.deleted_at IS NULL)
         ORDER BY i.due_on LIMIT 100`,
     )

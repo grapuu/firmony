@@ -11,7 +11,7 @@ import { formatEurExact } from '../format'
 import { MONEY_DAYS, moneyWindow, payoutVerdict, type MoneyFacts } from '../app/money'
 import { readMoney } from '../calc'
 import { addDays } from '../app/ending'
-import { moneyOutgoings, unpaidIssued, unpaidReceived } from '../app/money-store'
+import { ISSUED_REMAINING, moneyOutgoings, unpaidIssued, unpaidReceived } from '../app/money-store'
 import { receivedUnpaid } from '../peppol/store'
 import { assistantAllowed, type AssistantScope } from './store'
 import { ASSISTANT_TOPICS, type AssistantAnswer, type AssistantTopic } from './model'
@@ -81,8 +81,7 @@ export async function actionAnswer(
           .prepare(
             `SELECT i.id, i.number, i.customer_name FROM invoices i WHERE i.company_id = ? AND i.status = 'issued' AND i.kind = 'invoice'
                AND i.due_on IS NOT NULL AND i.due_on < ? AND (${named.slice(0, 4).map(() => "i.number LIKE '%' || ? || '%'").join(' OR ')})
-               AND COALESCE(i.total_cents, 0) > COALESCE((SELECT SUM(ABS(p.amount_cents)) FROM links l JOIN payments p ON p.id = l.payment_id
-                   WHERE l.document_id = i.document_id AND p.currency = 'EUR' AND (SELECT COUNT(*) FROM links k WHERE k.payment_id = p.id) = 1), 0)
+               AND ${ISSUED_REMAINING} > 0
                ORDER BY i.due_on LIMIT 1`,
           )
           .bind(company.id, day, ...named.slice(0, 4))

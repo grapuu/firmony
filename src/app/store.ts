@@ -399,11 +399,10 @@ export const CASH_PAID_COLUMN = "(SELECT ce.number || ' ' || ce.on_date FROM led
 export const PAID_ON_COLUMN = `COALESCE((SELECT MAX(p.booked_on) FROM links kl JOIN payments p ON p.id = kl.payment_id WHERE kl.document_id = d.id),
   (SELECT ce.on_date FROM ledger_entries ce WHERE ce.document_id = d.id AND ce.kind = 'cash' AND ce.deleted_at IS NULL LIMIT 1)) AS paid_on,
   CASE WHEN d.kind IN ('invoice_in', 'invoice_out') THEN COALESCE(
-    (SELECT SUM(ABS(p.amount_cents)) FROM links kl JOIN payments p ON p.id = kl.payment_id WHERE kl.document_id = d.id AND p.currency = 'EUR' AND (SELECT COUNT(*) FROM links o WHERE o.payment_id = p.id) = 1),
+    (SELECT SUM(COALESCE(kl.amount_cents, ABS(p.amount_cents))) FROM links kl JOIN payments p ON p.id = kl.payment_id WHERE kl.document_id = d.id AND p.currency = 'EUR'),
     (SELECT SUM(json_extract(j.value, '$.cents')) FROM ledger_entries ce, json_each(ce.lines) j WHERE ce.document_id = d.id AND ce.kind = 'cash' AND ce.deleted_at IS NULL)) END AS paid_cents,
-  CASE WHEN d.kind IN ('invoice_in', 'invoice_out') THEN (SELECT json_group_array(json_object('id', p.id, 'on', p.booked_on, 'cents', ABS(p.amount_cents)))
-    FROM links kl JOIN payments p ON p.id = kl.payment_id WHERE kl.document_id = d.id AND p.currency = 'EUR'
-      AND (SELECT COUNT(*) FROM links k WHERE k.payment_id = p.id) = 1) END AS paid_parts,
+  CASE WHEN d.kind IN ('invoice_in', 'invoice_out') THEN (SELECT json_group_array(json_object('id', p.id, 'on', p.booked_on, 'cents', COALESCE(kl.amount_cents, ABS(p.amount_cents))))
+    FROM links kl JOIN payments p ON p.id = kl.payment_id WHERE kl.document_id = d.id AND p.currency = 'EUR') END AS paid_parts,
   CASE WHEN d.kind IN ('invoice_in', 'invoice_out') AND d.number IS NOT NULL THEN (SELECT json_group_array(json_object('issued', c.issued_on, 'supplied', c.supplied_on, 'created', c.created_at, 'period', c.vat_period, 'lines', c.vat_lines))
     FROM documents c WHERE c.company_id = d.company_id AND c.corrects = d.number AND c.id <> d.id AND c.deleted_at IS NULL
       AND c.booked_at IS NOT NULL AND c.vat_mode = 'domestic' AND c.vat_lines IS NOT NULL
@@ -849,28 +848,44 @@ export function checkStatement(db: D1Database, company: string, payment: string,
   return db.prepare('UPDATE payments SET checked_at = ?, checked_by = ? WHERE id = ? AND company_id = ? AND exempt IS NOT NULL AND checked_at IS NULL').bind(now(), by, payment, company)
 }
 
+/** What a document's links paid of it in euros, as SQL over the alias d: each pair's allocation (links.amount_cents),
+ *  a link without one from before step 94 its payment whole. The one source of truth for paid amounts. */
+export const PAID_EUR_SQL = `COALESCE((SELECT SUM(COALESCE(l.amount_cents, ABS(p.amount_cents)))
+  FROM links l JOIN payments p ON p.id = l.payment_id WHERE l.document_id = d.id AND p.currency = 'EUR'), 0)`
+
+/** What is left of a document in its own currency, as SQL over the alias d: its due (or its total) less its paid
+ *  euros, converted to the document's currency at its booked rate for a foreign invoice. The difference of a foreign
+ *  invoice paid in euros is the exchange difference, never "unpaid". */
+export const REMAINING_SQL = `COALESCE(d.due_cents, d.total_cents) - CASE
+  WHEN COALESCE(d.currency, 'EUR') = 'EUR' OR d.fx_rate IS NULL OR d.fx_rate = '' THEN ${PAID_EUR_SQL}
+  ELSE ROUND(${PAID_EUR_SQL} * CAST(REPLACE(d.fx_rate, ',', '.') AS REAL)) END`
+
 /**
- * Pairs a document with a payment of the same company. Nothing happens when the document is paid in cash (a cash
- * document of the cash box), deleted or of another company, or when the payment needs no document; when the payment
- * would pay more of a euro invoice than is left of it (31 October 2026: a document may be paid in instalments, each
- * pair a link, but never paid past its amount). A pair made without asking (`alone`) also needs the payment to have no
- * document yet; a client may give one payment several documents.
+ * Pairs a document with a payment of the same company, with the pair's allocation (links.amount_cents): what of the
+ * payment goes to this document. The allocation is the whole payment for a document it pays alone; when the payment
+ * would pay past the document's remaining amount, the allocation is capped at it (a payment shared with several
+ * documents fills their remaining amounts; the rest of the payment stays for the next document). A foreign invoice
+ * paid in euros is capped at its booked rate; a refund of an issued credit note pairs at its remaining amount. A
+ * repeated pairing is no error (changes 0); nothing happens when the document is paid in cash, deleted or of another
+ * company, or when the payment needs no document.
  */
 export function linkStatement(db: D1Database, company: string, payment: string, doc: string, how: 'auto' | 'client' | 'accountant', by: string | null, alone = false): D1PreparedStatement {
   // The lock is asked of this payment and this document by their ids (?5, ?4): its subqueries name their own
   // `payments p` and `documents d`, so the outer aliases would mean every row there, any company's.
+  const cap = `CASE WHEN ${REMAINING_SQL} < 0 THEN -${REMAINING_SQL}
+    WHEN COALESCE(d.currency, 'EUR') = 'EUR' OR d.fx_rate IS NULL OR d.fx_rate = '' THEN MAX(0, ${REMAINING_SQL})
+    ELSE ROUND(MAX(0, ${REMAINING_SQL}) / CAST(REPLACE(d.fx_rate, ',', '.') AS REAL)) END`
   return db
     .prepare(
-      `INSERT INTO links (document_id, payment_id, company_id, how, by, created_at)
-       SELECT d.id, p.id, p.company_id, ?1, ?2, ?3
+      `INSERT INTO links (document_id, payment_id, company_id, how, by, created_at, amount_cents)
+       SELECT d.id, p.id, p.company_id, ?1, ?2, ?3,
+         COALESCE(CASE WHEN p.currency <> 'EUR' THEN ABS(p.amount_cents)
+           ELSE MIN(ABS(p.amount_cents) - COALESCE((SELECT SUM(COALESCE(k.amount_cents, ABS(o.amount_cents))) FROM links k JOIN payments o ON o.id = k.payment_id WHERE k.payment_id = p.id), 0), ${cap})
+           END, ABS(p.amount_cents))
        FROM documents d JOIN payments p ON p.company_id = d.company_id
        WHERE d.id = ?4 AND p.id = ?5 AND p.company_id = ?6 AND d.deleted_at IS NULL AND d.paid_privately = 0 AND p.exempt IS NULL
          AND NOT ${CASH_PAID}
          AND NOT EXISTS (SELECT 1 FROM links WHERE document_id = d.id AND payment_id = p.id)
-         AND (d.total_cents IS NULL OR d.total_cents = 0 OR p.currency <> 'EUR' OR
-           ABS(p.amount_cents) <= COALESCE(d.due_cents, d.total_cents) - COALESCE((SELECT SUM(ABS(o.amount_cents))
-             FROM links k JOIN payments o ON o.id = k.payment_id WHERE k.document_id = d.id AND o.currency = 'EUR'
-               AND (SELECT COUNT(*) FROM links k2 WHERE k2.payment_id = o.id) = 1), 0))
          ${how === 'auto' ? `AND NOT ${linkLockedSql('?5', '?4')}` : ''}
          ${alone ? 'AND NOT EXISTS (SELECT 1 FROM links WHERE payment_id = p.id)' : ''}`,
     )
