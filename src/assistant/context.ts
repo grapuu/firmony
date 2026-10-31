@@ -68,7 +68,7 @@ export async function actionAnswer(
     source('Nová faktúra', 'Formulár vystaví faktúru, dobropis aj zálohovú faktúru.', here('/app/faktury/nova'))
     return true
   }
-  if (/nahra|odfot|fotk|sken|pridaj.*doklad|doklad.*pridaj|posla.*doklad|pošl.*doklad/i.test(question)) {
+  if (/nahra.*doklad|doklad.*nahra|odfot|fotk|sken|pridaj.*doklad|pridám.*doklad|pridať.*doklad|doklad.*(?:pridať|pridám|pridaj)|posla.*doklad|pošl.*doklad/i.test(question)) {
     answer.paragraphs.push(`Doklady pridáte na ${here('/app/doklady')}: fotku, PDF alebo e-faktúru ako súbor XML. Poslať ich môžete aj e-mailom na adresu firmy.`)
     source('Doklady', 'Nahratie, čítanie a spárovanie s platbou.', here('/app/doklady'))
     return true
