@@ -1,5 +1,27 @@
 # Firmony: progress of the continuation
 
+## Ôsma vlna (Cline, 31. október 2026 CEST) — splátky, DPH, 158/2026, assety, záťaž
+
+- **Splátky (viac platieb na doklad).** Schéma: `links` znovu vytvorená bez primárneho kľúča dokumentu
+  (krok 92; guard triggery period-schema.ts zhodné, znovu vytvorené okolo rekreácie). Párovanie prijíma
+  ďalšiu splátku až do zostávajúcej sumy (preplatok sa odmietne), odstránenie jednej dvojice neruší ostatné.
+  Premietnuté: prehľad dokladov (jeden riadok), zostatok po splátkach v Peniaze vopred a v Mony, saldokonto
+  (súčet), príkazy na úhradu (len zvyšok), upomienky a úroky (len zo zvyšku), § 53b (oprava len z neuhradenej
+  časti, každá splátka po 101. dni vracia svoj podiel v svojom období), kurzové rozdiely až pri poslednej
+  splátke (ročné precenenie počíta do poslednej úhrady), závierka cez rovnaké knihy. Testy v units aj runtime.
+- **DPH podľa originálov (222/2004 v znení 1. 1. 2027, static.slov-lex.sk; KVDPH poučenie, MP 5/DPH/2023, XSD).**
+  Osoba podľa § 7a nemá nikdy záporný r. 32 (bez nároku na vrátenie, varovanie); prijatý dobropis patrí do
+  obdobia prijatia dokladu (§ 53 ods. 2 písm. a), vystavený do obdobia vyhotovenia (§ 25 ods. 3); množstvo A.2
+  sa matematicky zaokrúhli na 2 desatinné miesta (MnozstvoType) aj pri trojmiestnom vstupe.
+- **Zákon 158/2026 Z. z.:** odvodová odpočítateľná položka (300 €/2027) aj pre rodiča na materskej/otcovskej/
+  rodičovskej dovolenke s DoVP/DoPČ — pole `leave_kind`, formulár, výpočet (len dôchodkové+RFS), MVPP typ
+  ZECD1V/ZECD2V; nepravidelný príjem bez typu zostáva na externú prípravu. Znenie citované z originálu.
+- **Verziované assety všade:** `asset()` aj v AML priznaní a bezplatnej fakturácii; unit test prejde všetky
+  views a zlyhá na každom odkaze bez verzie. Produkčná verifikácia očakáva verziovaný skript.
+- **Záťažový test (test:load, 3 000 dokladov/mesiac):** prah 2 s (teplé otvorenie) je súčasťou testu.
+  Nad prahom zostáva stránka klienta `/ucto/klienti/:id` (3 677 ms — merané 31. 10. 2026; ďalší rez).
+- Nasadené a overené: `d057190b..5a4309b8`.
+
 ## Siedma vlna (Cline, 31. október 2026 CEST) — tri páky naraz
 
 - **Samouzavieranie hneď.** `readAll` (nahratie, e-mail, e-faktúra) po dočítaní a spárovaní ihneď spustí
