@@ -866,6 +866,7 @@ export function linkStatement(db: D1Database, company: string, payment: string, 
        FROM documents d JOIN payments p ON p.company_id = d.company_id
        WHERE d.id = ?4 AND p.id = ?5 AND p.company_id = ?6 AND d.deleted_at IS NULL AND d.paid_privately = 0 AND p.exempt IS NULL
          AND NOT ${CASH_PAID}
+         AND NOT EXISTS (SELECT 1 FROM links WHERE document_id = d.id AND payment_id = p.id)
          AND (d.total_cents IS NULL OR d.total_cents = 0 OR p.currency <> 'EUR' OR
            ABS(p.amount_cents) <= COALESCE(d.due_cents, d.total_cents) - COALESCE((SELECT SUM(ABS(o.amount_cents))
              FROM links k JOIN payments o ON o.id = k.payment_id WHERE k.document_id = d.id AND o.currency = 'EUR'

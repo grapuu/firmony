@@ -69,6 +69,7 @@ import { assistantProviderFixture } from './assistant.fixture.mjs'
 import { monyProviderFixture } from './mony.fixture.mjs'
 import { checkMigrations } from './migrations.runtime.mjs'
 import { checkLinksGuards } from './links-guards.runtime.mjs'
+import { checkInstalments } from './instalments.runtime.mjs'
 import { checkMony } from './mony.runtime.mjs'
 import { checkVatRegistration } from './vat-registration.runtime.mjs'
 import { checkTransactionTax } from './transaction-tax.runtime.mjs'
@@ -5087,6 +5088,7 @@ const text = (f) => new TextDecoder().decode(f?.data ?? new Uint8Array())
 await checkPeriodLocks({ db, acc, admin, anna, nowS, lucia, today: day(0), files, unzip, text })
 await checkMigrations({ mf })
 await checkLinksGuards({ db, nowS, today: day(0), lucia })
+await checkInstalments({ mf, db, site, nowS, today: day(0) })
 
 const validManifest = (contents) => {
   const m = JSON.parse(text(contents.find((f) => f.name === 'manifest.json')))
